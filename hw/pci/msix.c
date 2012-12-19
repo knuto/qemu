@@ -250,7 +250,7 @@ int msix_init(struct PCIDevice *dev, unsigned short nentries,
          ranges_overlap(table_offset, table_size, pba_offset, pba_size)) ||
         table_offset + table_size > memory_region_size(table_bar) ||
         pba_offset + pba_size > memory_region_size(pba_bar) ||
-        (table_offset | pba_offset) & PCI_MSIX_FLAGS_BIRMASK) {
+        (table_offset | pba_offset) & PCI_MSIX_TABLE_BIR) {
         return -EINVAL;
     }
 

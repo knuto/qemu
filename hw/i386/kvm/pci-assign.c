@@ -1320,8 +1320,8 @@ static int assigned_device_pci_cap_init(PCIDevice *pci_dev, Error **errp)
                      PCI_MSIX_FLAGS_ENABLE | PCI_MSIX_FLAGS_MASKALL);
 
         msix_table_entry = pci_get_long(pci_dev->config + pos + PCI_MSIX_TABLE);
-        bar_nr = msix_table_entry & PCI_MSIX_FLAGS_BIRMASK;
-        msix_table_entry &= ~PCI_MSIX_FLAGS_BIRMASK;
+        bar_nr = msix_table_entry & PCI_MSIX_TABLE_BIR;
+        msix_table_entry &= ~PCI_MSIX_TABLE_BIR;
         dev->msix_table_addr = pci_region[bar_nr].base_addr + msix_table_entry;
         dev->msix_max = msix_max;
     }
