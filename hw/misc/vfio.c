@@ -2799,10 +2799,10 @@ static int vfio_early_setup_msix(VFIODevice *vdev)
     pba = le32_to_cpu(pba);
 
     vdev->msix = g_malloc0(sizeof(*(vdev->msix)));
-    vdev->msix->table_bar = table & PCI_MSIX_FLAGS_BIRMASK;
-    vdev->msix->table_offset = table & ~PCI_MSIX_FLAGS_BIRMASK;
-    vdev->msix->pba_bar = pba & PCI_MSIX_FLAGS_BIRMASK;
-    vdev->msix->pba_offset = pba & ~PCI_MSIX_FLAGS_BIRMASK;
+    vdev->msix->table_bar = table & PCI_MSIX_TABLE_BIR;
+    vdev->msix->table_offset = table & ~PCI_MSIX_TABLE_BIR;
+    vdev->msix->pba_bar = pba & PCI_MSIX_TABLE_BIR;
+    vdev->msix->pba_offset = pba & ~PCI_MSIX_TABLE_BIR;
     vdev->msix->entries = (ctrl & PCI_MSIX_FLAGS_QSIZE) + 1;
 
     DPRINTF("%04x:%02x:%02x.%x "
