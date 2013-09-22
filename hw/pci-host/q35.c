@@ -352,6 +352,26 @@ static void mch_reset(DeviceState *qdev)
     mch_update(mch);
 }
 
+
+static void mch_init_dmar(MCHPCIState *mch)
+{
+    Error *error = NULL;
+
+    mch->iommu = INTEL_IOMMU_DEVICE(object_new(TYPE_INTEL_IOMMU_DEVICE));
+    object_initialize(mch->iommu, sizeof(*mch->iommu), TYPE_INTEL_IOMMU_DEVICE);
+    object_property_set_bool(OBJECT(mch->iommu), true, "realized", &error);
+
+    if (error) {
+        fprintf(stderr, "%s\n", error_get_pretty(error));
+        error_free(error);
+        return;
+    }
+
+    memory_region_add_subregion(mch->pci_address_space, Q35_HOST_BRIDGE_IOMMU_ADDR, 
+                                &mch->iommu->csrmem);
+}
+
+
 static int mch_init(PCIDevice *d)
 {
     int i;
@@ -392,6 +412,9 @@ static int mch_init(PCIDevice *d)
                  &mch->pam_regions[i+1], PAM_EXPAN_BASE + i * PAM_EXPAN_SIZE,
                  PAM_EXPAN_SIZE);
     }
+
+    /* DMAR device(s) (IOMMUs) */
+    mch_init_dmar(mch);
     return 0;
 }
 
