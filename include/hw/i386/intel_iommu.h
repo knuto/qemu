@@ -32,6 +32,11 @@
 /* DMAR Hardware Unit Definition address (IOMMU unit) */
 #define Q35_HOST_BRIDGE_IOMMU_ADDR  0xfed90000ULL
 
+/* Special bus/devfn values used for interrupt remapping */
+#define Q35_PSEUDO_BUS_PLATFORM         0xff
+#define Q35_PSEUDO_DEVFN_IOAPIC         0x01
+#define Q35_PSEUDO_DEVFN_HPET           0x02
+
 #define VTD_PCI_BUS_MAX             256
 #define VTD_PCI_SLOT_MAX            32
 #define VTD_PCI_FUNC_MAX            8
@@ -66,10 +71,12 @@ struct VTDContextCacheEntry {
 };
 
 struct VTDAddressSpace {
-    PCIDevice *dev;
+    PCIDevice *dev; /* If dev is NULL, bus is Q35_PSEUDO_BUS_PLATFORM */
     uint8_t devfn;
     AddressSpace as;
     MemoryRegion iommu;
+    AddressSpace int_remap_as;
+    MemoryRegion int_remap_region;
     IntelIOMMUState *iommu_state;
     QLIST_ENTRY(VTDAddressSpace) iommu_next; /* For traversal by the iommu */
     VTDContextCacheEntry context_cache_entry;
@@ -104,6 +111,10 @@ struct IntelIOMMUState {
     bool qi_enabled;                /* Set if the QI is enabled */
     uint8_t iq_last_desc_type;      /* The type of last completed descriptor */
 
+    dma_addr_t irta;
+    unsigned int irt_size;
+    bool ir_enabled;
+
     /* The index of the Fault Recording Register to be used next.
      * Wraps around from N-1 to 0, where N is the number of FRCD_REG.
      */
@@ -118,5 +129,7 @@ struct IntelIOMMUState {
     MemoryRegionIOMMUOps iommu_ops;
     QLIST_HEAD(, VTDAddressSpace) address_spaces;
 };
+
+extern const MemoryRegionOps vtd_int_remap_ops;
 
 #endif

@@ -854,6 +854,7 @@ static void msi_region_write(void *opaque, hwaddr addr, uint64_t data,
     uint8_t delivery = (data >> MSI_DATA_DELIVERY_MODE_SHIFT) & 0x7;
     /* FIXME: Ignoring redirection hint. */
 
+//printf("APIC: %08lx:%04lx\n", addr, data);
     apic_deliver_irq(dest, dest_mode, delivery, vector, trigger_mode);
 }
 

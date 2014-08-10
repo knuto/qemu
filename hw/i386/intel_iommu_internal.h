@@ -174,6 +174,7 @@
 /* ECAP_REG */
 /* (offset >> 4) << 8 */
 #define VTD_ECAP_IRO                (DMAR_IOTLB_REG_OFFSET << 4)
+#define VTD_ECAP_IR                 (1ULL << 3)
 #define VTD_ECAP_QI                 (1ULL << 1)
 
 /* CAP_REG */
@@ -211,6 +212,11 @@
 
 /* ICS_REG */
 #define VTD_ICS_IWC                 1UL
+
+/* IRTA_REG */
+#define VTD_IRTA_SIZE_MASK  (0xf)
+#define VTD_IRTA_EIME       (1ULL << 11)
+#define VTD_IRTA_ADDR_MASK  (VTD_HAW_MASK ^ 0xfffULL)
 
 /* IECTL_REG */
 #define VTD_IECTL_IM                (1UL << 31)
@@ -284,6 +290,7 @@ typedef struct VTDInvDesc VTDInvDesc;
 #define VTD_INV_DESC_TYPE               0xf
 #define VTD_INV_DESC_CC                 0x1 /* Context-cache Invalidate Desc */
 #define VTD_INV_DESC_IOTLB              0x2
+#define VTD_INV_DESC_INT                0x4
 #define VTD_INV_DESC_WAIT               0x5 /* Invalidation Wait Descriptor */
 #define VTD_INV_DESC_NONE               0   /* Not an Invalidate Descriptor */
 
@@ -385,5 +392,28 @@ typedef struct VTDRootEntry VTDRootEntry;
 #define VTD_SL_W                    (1ULL << 1)
 #define VTD_SL_PT_BASE_ADDR_MASK    (~(VTD_PAGE_SIZE - 1) & VTD_HAW_MASK)
 #define VTD_SL_IGN_COM              0xbff0000000000000ULL
+
+/* Interrupt Remapping Table Entry */
+union VTDIntRemapEntry {
+    struct {
+        uint64_t p:1,
+                 fpd:1,
+                 dest_mode:1,
+                 redir_hint:1,
+                 trigger_mode:1,
+                 delivery:3,
+                 avail:4,
+                 reserved1:4,
+                 vector:8,
+                 reserved2:8,
+                 dest:32;
+        uint64_t sid:16,
+                 sq:2,
+                 svt:2,
+                 reserved3:44;
+    } QEMU_PACKED fields;
+    uint64_t raw[2];
+};
+typedef union VTDIntRemapEntry VTDIntRemapEntry;
 
 #endif
