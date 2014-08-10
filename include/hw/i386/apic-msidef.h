@@ -5,6 +5,9 @@
  * Intel APIC constants: from include/asm/msidef.h
  */
 
+#define MSI_ADDR_BASE                   0xfee00000
+#define MSI_REGION_SIZE                 0x00100000
+
 /*
  * Shifts for MSI data
  */
@@ -25,6 +28,7 @@
 #define MSI_ADDR_REDIRECTION_SHIFT      3
 
 #define MSI_ADDR_DEST_ID_SHIFT          12
+#define MSI_ADDR_DEST_IDX_SHIFT         4
 #define  MSI_ADDR_DEST_ID_MASK          0x00ffff0
 
 #endif /* HW_APIC_MSIDEF_H */

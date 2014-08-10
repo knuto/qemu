@@ -347,10 +347,9 @@ static void mch_reset(DeviceState *qdev)
     mch_update(mch);
 }
 
-static AddressSpace *q35_host_dma_iommu(PCIDevice *dev, void *opaque)
+static AddressSpace *q35_host_dma_iommu(IntelIOMMUState *s, PCIDevice *dev, uint8_t devfn)
 {
     VTDAddressSpace *as = NULL;
-    struct IntelIOMMUState *s = opaque;
 
     if (dev && dev->dma_as) {
         as = container_of(dev->dma_as, VTDAddressSpace, as);
@@ -358,20 +357,35 @@ static AddressSpace *q35_host_dma_iommu(PCIDevice *dev, void *opaque)
     if (!as) {
         as = g_malloc0(sizeof(VTDAddressSpace));
         as->dev = dev;
-        as->devfn = dev->devfn;
+        as->devfn = devfn;
         as->iommu_state = s;
         as->context_cache_entry.context_cache_gen = 0;
         memory_region_init_iommu(&as->iommu, OBJECT(s),
                                  &s->iommu_ops, "intel_iommu", UINT64_MAX);
         address_space_init(&as->as,
                            &as->iommu, "intel_iommu");
+        memory_region_init_io(&as->int_remap_region, OBJECT(s),
+                              &vtd_int_remap_ops, as,
+                              "intel_int_remap", UINT64_MAX);
+        address_space_init(&as->int_remap_as,
+                           &as->int_remap_region,
+                           "intel_int_remap");
         QLIST_INSERT_HEAD(&s->address_spaces, as, iommu_next);
     }
     return &as->as;
 }
 
+static AddressSpace *q35_host_pcidev_iommu(PCIDevice *dev, void *opaque)
+{
+    IntelIOMMUState *s = opaque;
+    if (dev->dma_as)
+        return dev->dma_as;
+    return q35_host_dma_iommu(s, dev, dev->devfn);
+}
+
 static void mch_init_dmar(MCHPCIState *mch)
 {
+    PCMachineState *pcms = PC_MACHINE(qdev_get_machine());
     PCIBus *pci_bus = PCI_BUS(qdev_get_parent_bus(DEVICE(mch)));
 
     mch->iommu = INTEL_IOMMU_DEVICE(qdev_create(NULL, TYPE_INTEL_IOMMU_DEVICE));
@@ -380,7 +394,12 @@ static void mch_init_dmar(MCHPCIState *mch)
     qdev_init_nofail(DEVICE(mch->iommu));
     sysbus_mmio_map(SYS_BUS_DEVICE(mch->iommu), 0, Q35_HOST_BRIDGE_IOMMU_ADDR);
 
-    pci_setup_iommu(pci_bus, q35_host_dma_iommu, mch->iommu);
+    pci_setup_iommu(pci_bus, q35_host_pcidev_iommu, mch->iommu);
+
+    pcms->ioapic_msi_target =
+        q35_host_dma_iommu(mch->iommu, NULL, Q35_PSEUDO_DEVFN_IOAPIC);
+    pcms->hpet_msi_target =
+        q35_host_dma_iommu(mch->iommu, NULL, Q35_PSEUDO_DEVFN_HPET);
 }
 
 static int mch_init(PCIDevice *d)

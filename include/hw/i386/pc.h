@@ -23,6 +23,9 @@
  * address space begins.
  * @hotplug_memory: hotplug memory addess space container
  * @acpi_dev: link to ACPI PM device that performs ACPI hotplug handling
+ * @dma_address_space: target address space for DMA from I/O devices
+ * @ioapic_msi_target: target address space for IOAPIC interrupt messages
+ * @hpet_msi_target: target address space for HPET interrupt messages
  */
 struct PCMachineState {
     /*< private >*/
@@ -35,6 +38,10 @@ struct PCMachineState {
     HotplugHandler *acpi_dev;
 
     uint64_t max_ram_below_4g;
+
+    AddressSpace dma_address_space;
+    AddressSpace *ioapic_msi_target;
+    AddressSpace *hpet_msi_target;
 };
 
 #define PC_MACHINE_ACPI_DEVICE_PROP "acpi-device"

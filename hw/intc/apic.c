@@ -740,31 +740,11 @@ static uint32_t apic_mem_readl(void *opaque, hwaddr addr)
     return val;
 }
 
-static void apic_send_msi(hwaddr addr, uint32_t data)
-{
-    uint8_t dest = (addr & MSI_ADDR_DEST_ID_MASK) >> MSI_ADDR_DEST_ID_SHIFT;
-    uint8_t vector = (data & MSI_DATA_VECTOR_MASK) >> MSI_DATA_VECTOR_SHIFT;
-    uint8_t dest_mode = (addr >> MSI_ADDR_DEST_MODE_SHIFT) & 0x1;
-    uint8_t trigger_mode = (data >> MSI_DATA_TRIGGER_SHIFT) & 0x1;
-    uint8_t delivery = (data >> MSI_DATA_DELIVERY_MODE_SHIFT) & 0x7;
-    /* XXX: Ignore redirection hint. */
-    apic_deliver_irq(dest, dest_mode, delivery, vector, trigger_mode);
-}
-
 static void apic_mem_writel(void *opaque, hwaddr addr, uint32_t val)
 {
     DeviceState *dev;
     APICCommonState *s;
     int index = (addr >> 4) & 0xff;
-    if (addr > 0xfff || !index) {
-        /* MSI and MMIO APIC are at the same memory location,
-         * but actually not on the global bus: MSI is on PCI bus
-         * APIC is connected directly to the CPU.
-         * Mapping them on the global bus happens to work because
-         * MSI registers are reserved in APIC MMIO and vice versa. */
-        apic_send_msi(addr, val);
-        return;
-    }
 
     dev = cpu_get_current_apic();
     if (!dev) {
@@ -864,6 +844,34 @@ static void apic_post_load(APICCommonState *s)
     }
 }
 
+static void msi_region_write(void *opaque, hwaddr addr, uint64_t data,
+                             unsigned size)
+{
+    uint8_t dest = (addr & MSI_ADDR_DEST_ID_MASK) >> MSI_ADDR_DEST_ID_SHIFT;
+    uint8_t vector = (data & MSI_DATA_VECTOR_MASK) >> MSI_DATA_VECTOR_SHIFT;
+    uint8_t dest_mode = (addr >> MSI_ADDR_DEST_MODE_SHIFT) & 0x1;
+    uint8_t trigger_mode = (data >> MSI_DATA_TRIGGER_SHIFT) & 0x1;
+    uint8_t delivery = (data >> MSI_DATA_DELIVERY_MODE_SHIFT) & 0x7;
+    /* FIXME: Ignoring redirection hint. */
+
+    apic_deliver_irq(dest, dest_mode, delivery, vector, trigger_mode);
+}
+
+static uint64_t msi_region_read(void *opaque, hwaddr addr, unsigned size)
+{
+    return ~(uint64_t)0;
+}
+
+static const MemoryRegionOps msi_region_ops = {
+    .write = msi_region_write,
+    .read = msi_region_read,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .impl = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
 static const MemoryRegionOps apic_io_ops = {
     .old_mmio = {
         .read = { apic_mem_readb, apic_mem_readw, apic_mem_readl, },
@@ -876,8 +884,11 @@ static void apic_realize(DeviceState *dev, Error **errp)
 {
     APICCommonState *s = APIC_COMMON(dev);
 
-    memory_region_init_io(&s->io_memory, OBJECT(s), &apic_io_ops, s, "apic-msi",
+    memory_region_init_io(&s->io_memory, OBJECT(s), &apic_io_ops, s, "apic",
                           APIC_SPACE_SIZE);
+
+    memory_region_init_io(&s->msi_region, NULL, &msi_region_ops, NULL, "msi",
+                          MSI_REGION_SIZE);
 
     s->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, apic_timer, s);
     local_apics[s->idx] = s;

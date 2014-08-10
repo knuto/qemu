@@ -75,6 +75,10 @@ typedef struct Q35PCIHost {
 #define Q35_MASK(bit, ms_bit, ls_bit) \
 ((uint##bit##_t)(((1ULL << ((ms_bit) + 1)) - 1) & ~((1ULL << ls_bit) - 1)))
 
+#define Q35_PSEUDO_BUS_PLATFORM         0xff
+#define Q35_PSEUDO_DEVFN_IOAPIC         0x01
+#define Q35_PSEUDO_DEVFN_HPET           0x02
+
 /*
  * gmch part
  */

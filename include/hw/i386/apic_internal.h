@@ -95,6 +95,7 @@ struct APICCommonState {
     ICCDevice busdev;
 
     MemoryRegion io_memory;
+    MemoryRegion msi_region;
     X86CPU *cpu;
     uint32_t apicbase;
     uint8_t id;
