@@ -65,6 +65,9 @@
 
 #define ACPI_BUILD_TABLE_SIZE             0x20000
 
+#define ACPI_BUILD_IOAPIC_ID              0x0
+#define ACPI_BUILD_HPET_ID                0x0
+
 typedef struct AcpiCpuInfo {
     DECLARE_BITMAP(found_cpus, ACPI_CPU_HOTPLUG_ID_LIMIT);
 } AcpiCpuInfo;
@@ -608,7 +611,6 @@ build_madt(GArray *table_data, GArray *linker, AcpiCpuInfo *cpu,
     io_apic = acpi_data_push(table_data, sizeof *io_apic);
     io_apic->type = ACPI_APIC_IO;
     io_apic->length = sizeof(*io_apic);
-#define ACPI_BUILD_IOAPIC_ID 0x0
     io_apic->io_apic_id = ACPI_BUILD_IOAPIC_ID;
     io_apic->address = cpu_to_le32(IO_APIC_DEFAULT_ADDRESS);
     io_apic->interrupt = cpu_to_le32(0);
@@ -1198,6 +1200,7 @@ build_hpet(GArray *table_data, GArray *linker)
      */
     hpet->timer_block_id = cpu_to_le32(0x8086a201);
     hpet->addr.address = cpu_to_le64(HPET_BASE);
+    hpet->hpet_number = ACPI_BUILD_HPET_ID;
     build_header(linker, table_data,
                  (void *)hpet, "HPET", sizeof(*hpet), 1);
 }
@@ -1357,18 +1360,37 @@ build_dmar_q35(GArray *table_data, GArray *linker)
 
     AcpiTableDmar *dmar;
     AcpiDmarHardwareUnit *drhd;
+    AcpiDmarDeviceScope *dev_scope;
 
     dmar = acpi_data_push(table_data, sizeof(*dmar));
     dmar->host_address_width = VTD_HOST_ADDRESS_WIDTH - 1;
-    dmar->flags = 0;    /* No intr_remap for now */
+    dmar->flags = ACPI_DMAR_INTR_REMAP;
 
     /* DMAR Remapping Hardware Unit Definition structure */
     drhd = acpi_data_push(table_data, sizeof(*drhd));
     drhd->type = cpu_to_le16(ACPI_DMAR_TYPE_HARDWARE_UNIT);
-    drhd->length = cpu_to_le16(sizeof(*drhd));   /* No device scope now */
+    drhd->length = cpu_to_le16(sizeof(*drhd) + (sizeof(*dev_scope) + 2) * 2);
     drhd->flags = ACPI_DMAR_INCLUDE_PCI_ALL;
     drhd->pci_segment = cpu_to_le16(0);
     drhd->address = cpu_to_le64(Q35_HOST_BRIDGE_IOMMU_ADDR);
+
+    /* Device Scope structures for IOAPIC */
+    dev_scope = acpi_data_push(table_data, sizeof(*dev_scope) + 2);
+    dev_scope->type = ACPI_DMAR_SCOPE_TYPE_IOAPIC;
+    dev_scope->length = sizeof(*dev_scope) + 2;
+    dev_scope->enumeration_id = ACPI_BUILD_IOAPIC_ID;
+    dev_scope->start_bus_number = Q35_PSEUDO_BUS_PLATFORM;
+    dev_scope->path[0] = PCI_SLOT(Q35_PSEUDO_DEVFN_IOAPIC);
+    dev_scope->path[1] = PCI_FUNC(Q35_PSEUDO_DEVFN_IOAPIC);
+
+    /* Device Scope structures for HPET */
+    dev_scope = acpi_data_push(table_data, sizeof(*dev_scope) + 2);
+    dev_scope->type = ACPI_DMAR_SCOPE_TYPE_HPET;
+    dev_scope->length = sizeof(*dev_scope) + 2;
+    dev_scope->enumeration_id = ACPI_BUILD_HPET_ID;
+    dev_scope->start_bus_number = Q35_PSEUDO_BUS_PLATFORM;
+    dev_scope->path[0] = PCI_SLOT(Q35_PSEUDO_DEVFN_HPET);
+    dev_scope->path[1] = PCI_FUNC(Q35_PSEUDO_DEVFN_HPET);
 
     build_header(linker, table_data, (void *)(table_data->data + dmar_start),
                  "DMAR", table_data->len - dmar_start, 1);

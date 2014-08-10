@@ -19,6 +19,7 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "hw/i386/apic-msidef.h"
 #include "hw/i386/pc.h"
 #include "hw/sysbus.h"
 #include "exec/address-spaces.h"
@@ -28,10 +29,11 @@
 #ifdef DEBUG_INTEL_IOMMU
 enum {
     DEBUG_GENERAL, DEBUG_CSR, DEBUG_INV, DEBUG_MMU, DEBUG_FLOG,
-    DEBUG_CACHE,
+    DEBUG_CACHE, DEBUG_IR
 };
 #define VTD_DBGBIT(x)   (1 << DEBUG_##x)
-static int vtd_dbgflags = VTD_DBGBIT(GENERAL) | VTD_DBGBIT(CSR);
+static int vtd_dbgflags = VTD_DBGBIT(GENERAL) | VTD_DBGBIT(CSR) |
+                          VTD_DBGBIT(IR);
 
 #define VTD_DPRINTF(what, fmt, ...) do { \
     if (vtd_dbgflags & VTD_DBGBIT(what)) { \
@@ -1074,6 +1076,31 @@ static void vtd_handle_gcmd_qie(IntelIOMMUState *s, bool en)
 }
 
 /* Set Root Table Pointer */
+static void vtd_handle_gcmd_sirtp(IntelIOMMUState *s)
+{
+    VTD_DPRINTF(CSR, "set Interrupt Remap Table Pointer");
+
+    s->irta = vtd_get_quad_raw(s, DMAR_IRTA_REG);
+    s->irt_size = 2 << (s->irta & VTD_IRTA_SIZE_MASK);
+    s->irta &= VTD_IRTA_ADDR_MASK;
+    /* Ok - report back to driver */
+    vtd_set_clear_mask_long(s, DMAR_GSTS_REG, 0, VTD_GSTS_IRTPS);
+}
+
+static void vtd_handle_gcmd_ire(IntelIOMMUState *s, bool en)
+{
+    VTD_DPRINTF(IR, "Interrupt Remapping Enable %s", (en ? "on" : "off"));
+
+    if (en) {
+        s->ir_enabled = true;
+        vtd_set_clear_mask_long(s, DMAR_GSTS_REG, 0, VTD_GSTS_IRES);
+    } else {
+        s->ir_enabled = false;
+        vtd_set_clear_mask_long(s, DMAR_GSTS_REG, VTD_GSTS_IRES, 0);
+    }
+}
+
+/* Set Root Table Pointer */
 static void vtd_handle_gcmd_srtp(IntelIOMMUState *s)
 {
     VTD_DPRINTF(CSR, "set Root Table Pointer");
@@ -1121,6 +1148,12 @@ static void vtd_handle_gcmd_write(IntelIOMMUState *s)
     if (changed & VTD_GCMD_QIE) {
         /* Queued Invalidation Enable */
         vtd_handle_gcmd_qie(s, val & VTD_GCMD_QIE);
+    }
+    if (val & VTD_GCMD_SIRTP) {
+        vtd_handle_gcmd_sirtp(s);
+    }
+    if (changed & VTD_GCMD_IRE) {
+        vtd_handle_gcmd_ire(s, val & VTD_GCMD_IRE);
     }
 }
 
@@ -1344,6 +1377,11 @@ static bool vtd_process_inv_desc(IntelIOMMUState *s)
         if (!vtd_process_wait_desc(s, &inv_desc)) {
             return false;
         }
+        break;
+
+    case VTD_INV_DESC_INT:
+        VTD_DPRINTF(INV, "Interrupt Entry Invalidate Descriptor hi 0x%"PRIx64
+                    " lo 0x%"PRIx64, inv_desc.hi, inv_desc.lo);
         break;
 
     default:
@@ -1702,6 +1740,24 @@ static void vtd_mem_write(void *opaque, hwaddr addr,
         vtd_handle_ics_write(s);
         break;
 
+    /* Interrupt Remapping Table Address Register, 64-bit */
+    case DMAR_IRTA_REG:
+        VTD_DPRINTF(IR, "DMAR_IRTA_REG write addr 0x%"PRIx64
+                    ", size %d, val 0x%"PRIx64, addr, size, val);
+        if (size == 4) {
+            vtd_set_long(s, addr, val);
+        } else {
+            vtd_set_quad(s, addr, val);
+        }
+        break;
+
+    case DMAR_IRTA_REG_HI:
+        VTD_DPRINTF(IR, "DMAR_IRTA_REG_HI write addr 0x%"PRIx64
+                    ", size %d, val 0x%"PRIx64, addr, size, val);
+        assert(size == 4);
+        vtd_set_long(s, addr, val);
+        break;
+
     /* Invalidation Event Control Register, 32-bit */
     case DMAR_IECTL_REG:
         VTD_DPRINTF(INV, "DMAR_IECTL_REG write addr 0x%"PRIx64
@@ -1798,6 +1854,15 @@ static IOMMUTLBEntry vtd_iommu_translate(MemoryRegion *iommu, hwaddr addr,
         .perm = IOMMU_NONE,
     };
 
+    if (s->ir_enabled && vtd_is_interrupt_addr(addr)) {
+        ret.target_as = &vtd_as->int_remap_as;
+        ret.iova = addr;
+        ret.translated_addr = addr;
+        ret.addr_mask = ~(hwaddr)0x3;
+        ret.perm = IOMMU_WO;
+        return ret;
+    }
+
     if (!s->dmar_enabled) {
         /* DMAR disabled, passthrough, use 4k-page*/
         ret.iova = addr & VTD_PAGE_MASK_4K;
@@ -1816,6 +1881,86 @@ static IOMMUTLBEntry vtd_iommu_translate(MemoryRegion *iommu, hwaddr addr,
                 vtd_as->devfn, addr, ret.translated_addr);
     return ret;
 }
+
+static int get_int_remap_entry(IntelIOMMUState *s, uint16_t index,
+                               VTDIntRemapEntry *irte)
+{
+    dma_addr_t addr;
+
+    if (index >= s->irt_size) {
+        VTD_DPRINTF(IR, "error: IR table index %d out of range", index);
+        return -1;
+    }
+
+    addr = s->irta + index * sizeof(*irte);
+
+    if (dma_memory_read(get_dma_address_space(), addr, irte, sizeof(*irte))) {
+        VTD_DPRINTF(IR, "error: failed to access IR table at 0x%"PRIx64
+                    " + %"PRIu32, s->irta, index);
+        return -1;//-VTD_FR_CONTEXT_TABLE_INV;
+    }
+
+    irte->raw[0] = le64_to_cpu(irte->raw[0]);
+    irte->raw[1] = le64_to_cpu(irte->raw[1]);
+
+    return 0;
+}
+
+static void vtd_int_remap_write(void *opaque, hwaddr addr, uint64_t val,
+                                unsigned size)
+{
+    uint16_t index = ((addr >> 5) & 0x7fff) | ((addr << 13) & 8000);
+    VTDAddressSpace *vtd_as = opaque;
+    IntelIOMMUState *s = vtd_as->iommu_state;
+    VTDIntRemapEntry irte;
+    int ret;
+
+    if (!(addr & (1 << 4))) {
+        printf("compat MSI, blocked\n");
+        return;
+    }
+
+    if (addr & (1 << 3)) {
+        index += val & 0xffff;
+    }
+    ret = get_int_remap_entry(s, index, &irte);
+    if (ret) {
+        printf("error\n");
+        return;
+    }
+//printf("IRTE %d: %016lx_%016lx\n", index, irte.raw[1], irte.raw[0]);
+
+    if (!irte.fields.p) {
+        printf("IRTE not present\n");
+        return;
+    }
+    if (vtd_make_source_id(vtd_as->bus_num, vtd_as->devfn) !=
+        irte.fields.sid) {
+        printf("SID mismatch\n");
+        return;
+    }
+
+    addr = MSI_ADDR_BASE |
+        (irte.fields.dest_mode << MSI_ADDR_DEST_MODE_SHIFT) |
+        (irte.fields.redir_hint << MSI_ADDR_REDIRECTION_SHIFT) |
+        (irte.fields.dest << MSI_ADDR_DEST_IDX_SHIFT);
+    val = irte.fields.vector |
+        (irte.fields.delivery << MSI_DATA_DELIVERY_MODE_SHIFT) |
+        (1 << MSI_DATA_LEVEL_SHIFT) |
+        (irte.fields.trigger_mode << MSI_DATA_TRIGGER_SHIFT);
+//printf("MSI: %08lx:%04lx\n", addr, val);
+    stl_le_phys(get_dma_address_space(), addr, val);
+}
+
+const MemoryRegionOps vtd_int_remap_ops = {
+    .write = vtd_int_remap_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
 
 static const VMStateDescription vtd_vmstate = {
     .name = "iommu-intel",
@@ -1862,9 +2007,12 @@ static void vtd_init(IntelIOMMUState *s)
     s->qi_enabled = false;
     s->iq_last_desc_type = VTD_INV_DESC_NONE;
     s->next_frcd_reg = 0;
+    s->irta = 0;
+    s->irt_size = 0;
+    s->ir_enabled = false;
     s->cap = VTD_CAP_FRO | VTD_CAP_NFR | VTD_CAP_ND | VTD_CAP_MGAW |
              VTD_CAP_SAGAW | VTD_CAP_MAMV | VTD_CAP_PSI;
-    s->ecap = VTD_ECAP_QI | VTD_ECAP_IRO;
+    s->ecap = VTD_ECAP_QI | VTD_ECAP_IR | VTD_ECAP_IRO;
 
     vtd_reset_context_cache(s);
     vtd_reset_iotlb(s);
@@ -1901,6 +2049,7 @@ static void vtd_init(IntelIOMMUState *s)
     vtd_define_quad(s, DMAR_IQT_REG, 0, 0x7fff0ULL, 0);
     vtd_define_quad(s, DMAR_IQA_REG, 0, 0xfffffffffffff007ULL, 0);
     vtd_define_long(s, DMAR_ICS_REG, 0, 0, 0x1UL);
+    vtd_define_quad(s, DMAR_IRTA_REG, 0, 0xfffffffffffff00fULL, 0);
     vtd_define_long(s, DMAR_IECTL_REG, 0x80000000UL, 0x80000000UL, 0);
     vtd_define_long(s, DMAR_IEDATA_REG, 0, 0xffffffffUL, 0);
     vtd_define_long(s, DMAR_IEADDR_REG, 0, 0xfffffffcUL, 0);

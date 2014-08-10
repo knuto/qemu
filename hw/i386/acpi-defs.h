@@ -354,4 +354,26 @@ typedef struct AcpiDmarHardwareUnit AcpiDmarHardwareUnit;
 /* Masks for Flags field above */
 #define ACPI_DMAR_INCLUDE_PCI_ALL   1
 
+/* DMAR Device Scope structures */
+struct AcpiDmarDeviceScope {
+    uint8_t type;
+    uint8_t length;
+    uint16_t reserved;
+    uint8_t enumeration_id;
+    uint8_t start_bus_number;
+    uint8_t path[0];
+} QEMU_PACKED;
+typedef struct AcpiDmarDeviceScope AcpiDmarDeviceScope;
+
+/* Values for type in struct AcpiDmarDeviceScope */
+enum {
+    ACPI_DMAR_SCOPE_TYPE_NOT_USED = 0,
+    ACPI_DMAR_SCOPE_TYPE_ENDPOINT = 1,
+    ACPI_DMAR_SCOPE_TYPE_BRIDGE = 2,
+    ACPI_DMAR_SCOPE_TYPE_IOAPIC = 3,
+    ACPI_DMAR_SCOPE_TYPE_HPET = 4,
+    ACPI_DMAR_SCOPE_TYPE_ACPI = 5,
+    ACPI_DMAR_SCOPE_TYPE_RESERVED = 6 /* Reserved for future use */
+};
+
 #endif

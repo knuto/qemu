@@ -69,6 +69,8 @@ struct VTDAddressSpace {
     uint8_t devfn;
     AddressSpace as;
     MemoryRegion iommu;
+    AddressSpace int_remap_as;
+    MemoryRegion int_remap_region;
     IntelIOMMUState *iommu_state;
     VTDContextCacheEntry context_cache_entry;
 };
@@ -102,6 +104,10 @@ struct IntelIOMMUState {
     bool qi_enabled;                /* Set if the QI is enabled */
     uint8_t iq_last_desc_type;      /* The type of last completed descriptor */
 
+    dma_addr_t irta;
+    unsigned int irt_size;
+    bool ir_enabled;
+
     /* The index of the Fault Recording Register to be used next.
      * Wraps around from N-1 to 0, where N is the number of FRCD_REG.
      */
@@ -116,5 +122,7 @@ struct IntelIOMMUState {
     MemoryRegionIOMMUOps iommu_ops;
     VTDAddressSpace **address_spaces[VTD_PCI_BUS_MAX];
 };
+
+extern const MemoryRegionOps vtd_int_remap_ops;
 
 #endif

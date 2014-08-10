@@ -369,6 +369,12 @@ static AddressSpace *q35_host_dma_iommu(IntelIOMMUState *s, uint8_t bus_num,
                                  &s->iommu_ops, "intel_iommu", UINT64_MAX);
         address_space_init(&pvtd_as[devfn]->as,
                            &pvtd_as[devfn]->iommu, "intel_iommu");
+        memory_region_init_io(&pvtd_as[devfn]->int_remap_region, OBJECT(s),
+                              &vtd_int_remap_ops, pvtd_as[devfn],
+                              "intel_int_remap", UINT64_MAX);
+        address_space_init(&pvtd_as[devfn]->int_remap_as,
+                           &pvtd_as[devfn]->int_remap_region,
+                           "intel_int_remap");
     }
     return &pvtd_as[devfn]->as;
 }
