@@ -134,11 +134,6 @@ static void pc_q35_init(MachineState *machine)
     object_property_add_child(qdev_get_machine(), "icc-bridge",
                               OBJECT(icc_bridge), NULL);
 
-    pc_cpus_init(machine->cpu_model, icc_bridge);
-    pc_acpi_init("q35-acpi-dsdt.aml");
-
-    kvmclock_create();
-
     /* pci enabled */
     if (pci_enabled) {
         pci_memory = g_new(MemoryRegion, 1);
@@ -173,6 +168,11 @@ static void pc_q35_init(MachineState *machine)
                        below_4g_mem_size, above_4g_mem_size,
                        rom_memory, &ram_memory, guest_info);
     }
+
+    pc_cpus_init(machine->cpu_model, icc_bridge);
+    pc_acpi_init("q35-acpi-dsdt.aml");
+
+    kvmclock_create();
 
     /* irq lines */
     gsi_state = g_malloc0(sizeof(*gsi_state));

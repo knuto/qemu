@@ -206,7 +206,7 @@ static void update_irq(struct HPETTimer *timer, int set)
             }
         }
     } else if (timer_fsb_route(timer)) {
-        stl_le_phys(&address_space_memory,
+        stl_le_phys(PC_MACHINE(qdev_get_machine())->hpet_msi_target,
                     timer->fsb >> 32, timer->fsb & 0xffffffff);
     } else if (timer->config & HPET_TN_TYPE_LEVEL) {
         s->isr |= mask;

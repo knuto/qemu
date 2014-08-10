@@ -347,14 +347,10 @@ static void mch_reset(DeviceState *qdev)
     mch_update(mch);
 }
 
-static AddressSpace *q35_host_dma_iommu(PCIBus *bus, void *opaque, int devfn)
+static AddressSpace *q35_host_dma_iommu(IntelIOMMUState *s, uint8_t bus_num,
+                                        uint8_t devfn)
 {
-    IntelIOMMUState *s = opaque;
     VTDAddressSpace **pvtd_as;
-    int bus_num = pci_bus_num(bus);
-
-    assert(0 <= bus_num && bus_num <= VTD_PCI_BUS_MAX);
-    assert(0 <= devfn && devfn <= VTD_PCI_DEVFN_MAX);
 
     pvtd_as = s->address_spaces[bus_num];
     if (!pvtd_as) {
@@ -377,8 +373,17 @@ static AddressSpace *q35_host_dma_iommu(PCIBus *bus, void *opaque, int devfn)
     return &pvtd_as[devfn]->as;
 }
 
+static AddressSpace *q35_host_pcidev_iommu(PCIBus *bus, void *opaque, int devfn)
+{
+    IntelIOMMUState *s = opaque;
+    int bus_num = pci_bus_num(bus);
+
+    return q35_host_dma_iommu(s, bus_num, devfn);
+}
+
 static void mch_init_dmar(MCHPCIState *mch)
 {
+    PCMachineState *pcms = PC_MACHINE(qdev_get_machine());
     PCIBus *pci_bus = PCI_BUS(qdev_get_parent_bus(DEVICE(mch)));
 
     mch->iommu = INTEL_IOMMU_DEVICE(qdev_create(NULL, TYPE_INTEL_IOMMU_DEVICE));
@@ -387,7 +392,14 @@ static void mch_init_dmar(MCHPCIState *mch)
     qdev_init_nofail(DEVICE(mch->iommu));
     sysbus_mmio_map(SYS_BUS_DEVICE(mch->iommu), 0, Q35_HOST_BRIDGE_IOMMU_ADDR);
 
-    pci_setup_iommu(pci_bus, q35_host_dma_iommu, mch->iommu);
+    pci_setup_iommu(pci_bus, q35_host_pcidev_iommu, mch->iommu);
+
+    pcms->ioapic_msi_target =
+        q35_host_dma_iommu(mch->iommu, Q35_PSEUDO_BUS_PLATFORM,
+                           Q35_PSEUDO_DEVFN_IOAPIC);
+    pcms->hpet_msi_target =
+        q35_host_dma_iommu(mch->iommu, Q35_PSEUDO_BUS_PLATFORM,
+                           Q35_PSEUDO_DEVFN_HPET);
 }
 
 static int mch_init(PCIDevice *d)

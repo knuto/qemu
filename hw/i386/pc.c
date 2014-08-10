@@ -25,6 +25,7 @@
 #include "hw/i386/pc.h"
 #include "hw/char/serial.h"
 #include "hw/i386/apic.h"
+#include "hw/i386/apic-msidef.h"
 #include "hw/block/fdc.h"
 #include "hw/ide.h"
 #include "hw/pci/pci.h"
@@ -1228,6 +1229,7 @@ FWCfgState *pc_memory_init(MachineState *machine,
     MemoryRegion *ram_below_4g, *ram_above_4g;
     FWCfgState *fw_cfg;
     PCMachineState *pcms = PC_MACHINE(machine);
+    MemoryRegion *dma, *mem_alias;
 
     assert(machine->ram_size == below_4g_mem_size + above_4g_mem_size);
 
@@ -1292,6 +1294,21 @@ FWCfgState *pc_memory_init(MachineState *machine,
         memory_region_add_subregion(system_memory, pcms->hotplug_memory_base,
                                     &pcms->hotplug_memory);
     }
+
+    /* Initialized DMA address space */
+    dma = g_malloc(sizeof(*dma));
+    memory_region_init(dma, NULL, "dma-container",
+                       memory_region_size(system_memory));
+    address_space_init(&pcms->dma_address_space, dma, "pc-dma");
+
+    mem_alias = g_malloc(sizeof(*mem_alias));
+    memory_region_init_alias(mem_alias, NULL, "system-memory", system_memory,
+                             0, memory_region_size(system_memory));
+    memory_region_add_subregion_overlap(dma, 0, mem_alias, 0);
+
+    pci_set_dma_address_space(&pcms->dma_address_space);
+    pcms->ioapic_msi_target = &pcms->dma_address_space;
+    pcms->hpet_msi_target = &pcms->dma_address_space;
 
     /* Initialize PC system firmware */
     pc_system_firmware_init(rom_memory, guest_info->isapc_ram_fw);

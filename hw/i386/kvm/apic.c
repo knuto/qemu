@@ -9,6 +9,8 @@
  * This work is licensed under the terms of the GNU GPL version 2.
  * See the COPYING file in the top-level directory.
  */
+
+#include "hw/i386/apic-msidef.h"
 #include "hw/i386/apic_internal.h"
 #include "hw/pci/msi.h"
 #include "sysemu/kvm.h"
@@ -146,14 +148,13 @@ static void kvm_apic_external_nmi(APICCommonState *s)
     run_on_cpu(CPU(s->cpu), do_inject_external_nmi, s);
 }
 
-static uint64_t kvm_apic_mem_read(void *opaque, hwaddr addr,
-                                  unsigned size)
+static uint64_t kvm_msi_region_read(void *opaque, hwaddr addr, unsigned size)
 {
     return ~(uint64_t)0;
 }
 
-static void kvm_apic_mem_write(void *opaque, hwaddr addr,
-                               uint64_t data, unsigned size)
+static void kvm_msi_region_write(void *opaque, hwaddr addr, uint64_t data,
+                                 unsigned size)
 {
     MSIMessage msg = { .address = addr, .data = data };
     int ret;
@@ -165,18 +166,24 @@ static void kvm_apic_mem_write(void *opaque, hwaddr addr,
     }
 }
 
-static const MemoryRegionOps kvm_apic_io_ops = {
-    .read = kvm_apic_mem_read,
-    .write = kvm_apic_mem_write,
+static const MemoryRegionOps kvm_msi_region_ops = {
+    .read = kvm_msi_region_read,
+    .write = kvm_msi_region_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
+    .impl = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
 };
 
 static void kvm_apic_realize(DeviceState *dev, Error **errp)
 {
     APICCommonState *s = APIC_COMMON(dev);
 
-    memory_region_init_io(&s->io_memory, NULL, &kvm_apic_io_ops, s, "kvm-apic-msi",
-                          APIC_SPACE_SIZE);
+    memory_region_init(&s->io_memory, NULL, "kvm-apic", APIC_SPACE_SIZE);
+
+    memory_region_init_io(&s->msi_region, NULL, &kvm_msi_region_ops, NULL,
+                          "kvm-msi", MSI_REGION_SIZE);
 
     if (kvm_has_gsi_routing()) {
         msi_supported = true;

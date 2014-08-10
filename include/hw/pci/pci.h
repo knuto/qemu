@@ -408,6 +408,8 @@ int pci_parse_devaddr(const char *addr, int *domp, int *busp,
 
 void pci_device_deassert_intx(PCIDevice *dev);
 
+void pci_set_dma_address_space(AddressSpace *dma_address_space);
+
 typedef AddressSpace *(*PCIIOMMUFunc)(PCIBus *, void *, int);
 
 AddressSpace *pci_device_iommu_address_space(PCIDevice *dev);

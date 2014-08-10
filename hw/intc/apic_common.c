@@ -18,7 +18,9 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>
  */
 #include "hw/i386/apic.h"
+#include "hw/i386/apic-msidef.h"
 #include "hw/i386/apic_internal.h"
+#include "hw/i386/pc.h"
 #include "trace.h"
 #include "sysemu/kvm.h"
 #include "hw/qdev.h"
@@ -293,9 +295,10 @@ static void apic_common_realize(DeviceState *dev, Error **errp)
 {
     APICCommonState *s = APIC_COMMON(dev);
     APICCommonClass *info;
+    AddressSpace *dma_as;
     static DeviceState *vapic;
     static int apic_no;
-    static bool mmio_registered;
+    static bool registered;
 
     if (apic_no >= MAX_APICS) {
         error_setg(errp, "%s initialization failed.",
@@ -306,10 +309,15 @@ static void apic_common_realize(DeviceState *dev, Error **errp)
 
     info = APIC_COMMON_GET_CLASS(s);
     info->realize(dev, errp);
-    if (!mmio_registered) {
+    if (!registered) {
         ICCBus *b = ICC_BUS(qdev_get_parent_bus(dev));
         memory_region_add_subregion(b->apic_address_space, 0, &s->io_memory);
-        mmio_registered = true;
+
+        dma_as = &PC_MACHINE(qdev_get_machine())->dma_address_space;
+        memory_region_add_subregion_overlap(dma_as->root, MSI_ADDR_BASE,
+                                            &s->msi_region, 1);
+
+        registered = true;
     }
 
     /* Note: We need at least 1M to map the VAPIC option ROM */

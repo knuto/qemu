@@ -48,6 +48,7 @@ static void pcibus_dev_print(Monitor *mon, DeviceState *dev, int indent);
 static char *pcibus_get_dev_path(DeviceState *dev);
 static char *pcibus_get_fw_dev_path(DeviceState *dev);
 static void pcibus_reset(BusState *qbus);
+static AddressSpace *pci_dma_address_space = &address_space_memory;
 
 static Property pci_props[] = {
     DEFINE_PROP_PCI_DEVFN("addr", PCIDevice, devfn, -1),
@@ -2276,6 +2277,11 @@ static void pci_device_class_init(ObjectClass *klass, void *data)
     k->props = pci_props;
 }
 
+void pci_set_dma_address_space(AddressSpace *dma_address_space)
+{
+    pci_dma_address_space = dma_address_space;
+}
+
 AddressSpace *pci_device_iommu_address_space(PCIDevice *dev)
 {
     PCIBus *bus = PCI_BUS(dev->bus);
@@ -2290,7 +2296,7 @@ AddressSpace *pci_device_iommu_address_space(PCIDevice *dev)
         return pci_device_iommu_address_space(bus->parent_dev);
     }
 
-    return &address_space_memory;
+    return pci_dma_address_space;
 }
 
 void pci_setup_iommu(PCIBus *bus, PCIIOMMUFunc fn, void *opaque)

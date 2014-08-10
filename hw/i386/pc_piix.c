@@ -146,12 +146,6 @@ static void pc_init1(MachineState *machine,
     object_property_add_child(qdev_get_machine(), "icc-bridge",
                               OBJECT(icc_bridge), NULL);
 
-    pc_cpus_init(machine->cpu_model, icc_bridge);
-
-    if (kvm_enabled() && kvmclock_enabled) {
-        kvmclock_create();
-    }
-
     if (pci_enabled) {
         pci_memory = g_new(MemoryRegion, 1);
         memory_region_init(pci_memory, NULL, "pci", UINT64_MAX);
@@ -189,6 +183,12 @@ static void pc_init1(MachineState *machine,
                                 machine->initrd_filename,
                                 below_4g_mem_size,
                                 guest_info);
+    }
+
+    pc_cpus_init(machine->cpu_model, icc_bridge);
+
+    if (kvm_enabled() && kvmclock_enabled) {
+        kvmclock_create();
     }
 
     gsi_state = g_malloc0(sizeof(*gsi_state));

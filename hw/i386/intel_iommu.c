@@ -19,6 +19,7 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "hw/i386/pc.h"
 #include "hw/sysbus.h"
 #include "exec/address-spaces.h"
 #include "intel_iommu_internal.h"
@@ -230,6 +231,11 @@ static void vtd_update_iotlb(IntelIOMMUState *s, uint16_t source_id,
     g_hash_table_replace(s->iotlb, key, entry);
 }
 
+static AddressSpace* get_dma_address_space(void)
+{
+    return &PC_MACHINE(qdev_get_machine())->dma_address_space;
+}
+
 /* Given the reg addr of both the message data and address, generate an
  * interrupt via MSI.
  */
@@ -246,7 +252,7 @@ static void vtd_generate_interrupt(IntelIOMMUState *s, hwaddr mesg_addr_reg,
     data = vtd_get_long_raw(s, mesg_data_reg);
 
     VTD_DPRINTF(FLOG, "msi: addr 0x%"PRIx64 " data 0x%"PRIx32, addr, data);
-    stl_le_phys(&address_space_memory, addr, data);
+    stl_le_phys(get_dma_address_space(), addr, data);
 }
 
 /* Generate a fault event to software via MSI if conditions are met.
@@ -459,7 +465,7 @@ static int vtd_get_root_entry(IntelIOMMUState *s, uint8_t index,
     dma_addr_t addr;
 
     addr = s->root + index * sizeof(*re);
-    if (dma_memory_read(&address_space_memory, addr, re, sizeof(*re))) {
+    if (dma_memory_read(get_dma_address_space(), addr, re, sizeof(*re))) {
         VTD_DPRINTF(GENERAL, "error: fail to access root-entry at 0x%"PRIx64
                     " + %"PRIu8, s->root, index);
         re->val = 0;
@@ -484,7 +490,7 @@ static int vtd_get_context_entry_from_root(VTDRootEntry *root, uint8_t index,
         return -VTD_FR_ROOT_ENTRY_P;
     }
     addr = (root->val & VTD_ROOT_ENTRY_CTP) + index * sizeof(*ce);
-    if (dma_memory_read(&address_space_memory, addr, ce, sizeof(*ce))) {
+    if (dma_memory_read(get_dma_address_space(), addr, ce, sizeof(*ce))) {
         VTD_DPRINTF(GENERAL, "error: fail to access context-entry at 0x%"PRIx64
                     " + %"PRIu8,
                     (uint64_t)(root->val & VTD_ROOT_ENTRY_CTP), index);
@@ -524,7 +530,7 @@ static uint64_t vtd_get_slpte(dma_addr_t base_addr, uint32_t index)
 
     assert(index < VTD_SL_PT_ENTRY_NR);
 
-    if (dma_memory_read(&address_space_memory,
+    if (dma_memory_read(get_dma_address_space(),
                         base_addr + index * sizeof(slpte), &slpte,
                         sizeof(slpte))) {
         slpte = (uint64_t)-1;
@@ -1167,7 +1173,7 @@ static bool vtd_get_inv_desc(dma_addr_t base_addr, uint32_t offset,
                              VTDInvDesc *inv_desc)
 {
     dma_addr_t addr = base_addr + offset * sizeof(*inv_desc);
-    if (dma_memory_read(&address_space_memory, addr, inv_desc,
+    if (dma_memory_read(get_dma_address_space(), addr, inv_desc,
         sizeof(*inv_desc))) {
         VTD_DPRINTF(GENERAL, "error: fail to fetch Invalidation Descriptor "
                     "base_addr 0x%"PRIx64 " offset %"PRIu32, base_addr, offset);
@@ -1202,8 +1208,8 @@ static bool vtd_process_wait_desc(IntelIOMMUState *s, VTDInvDesc *inv_desc)
         VTD_DPRINTF(INV, "status data 0x%x, status addr 0x%"PRIx64,
                     status_data, status_addr);
         status_data = cpu_to_le32(status_data);
-        if (dma_memory_write(&address_space_memory, status_addr, &status_data,
-                             sizeof(status_data))) {
+        if (dma_memory_write(get_dma_address_space(), status_addr,
+                             &status_data, sizeof(status_data))) {
             VTD_DPRINTF(GENERAL, "error: fail to perform a coherent write");
             return false;
         }
@@ -1785,7 +1791,7 @@ static IOMMUTLBEntry vtd_iommu_translate(MemoryRegion *iommu, hwaddr addr,
     VTDAddressSpace *vtd_as = container_of(iommu, VTDAddressSpace, iommu);
     IntelIOMMUState *s = vtd_as->iommu_state;
     IOMMUTLBEntry ret = {
-        .target_as = &address_space_memory,
+        .target_as = get_dma_address_space(),
         .iova = addr,
         .translated_addr = 0,
         .addr_mask = ~(hwaddr)0,

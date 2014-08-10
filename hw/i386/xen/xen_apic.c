@@ -9,18 +9,19 @@
  * This work is licensed under the terms of the GNU GPL version 2 or
  * later. See the COPYING file in the top-level directory.
  */
+
+#include "hw/i386/apic-msidef.h"
 #include "hw/i386/apic_internal.h"
 #include "hw/pci/msi.h"
 #include "hw/xen/xen.h"
 
-static uint64_t xen_apic_mem_read(void *opaque, hwaddr addr,
-                                  unsigned size)
+static uint64_t xen_msi_region_read(void *opaque, hwaddr addr, unsigned size)
 {
     return ~(uint64_t)0;
 }
 
-static void xen_apic_mem_write(void *opaque, hwaddr addr,
-                               uint64_t data, unsigned size)
+static void xen_msi_region_write(void *opaque, hwaddr addr, uint64_t data,
+                                 unsigned size)
 {
     if (size != sizeof(uint32_t)) {
         fprintf(stderr, "Xen: APIC write data size = %d, invalid\n", size);
@@ -30,10 +31,14 @@ static void xen_apic_mem_write(void *opaque, hwaddr addr,
     xen_hvm_inject_msi(addr, data);
 }
 
-static const MemoryRegionOps xen_apic_io_ops = {
-    .read = xen_apic_mem_read,
-    .write = xen_apic_mem_write,
+static const MemoryRegionOps xen_msi_region_ops = {
+    .read = xen_msi_region_read,
+    .write = xen_msi_region_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
+    .impl = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
 };
 
 static void xen_apic_realize(DeviceState *dev, Error **errp)
@@ -41,8 +46,10 @@ static void xen_apic_realize(DeviceState *dev, Error **errp)
     APICCommonState *s = APIC_COMMON(dev);
 
     s->vapic_control = 0;
-    memory_region_init_io(&s->io_memory, OBJECT(s), &xen_apic_io_ops, s,
-                          "xen-apic-msi", APIC_SPACE_SIZE);
+    memory_region_init(&s->io_memory, NULL, "xen-apic", APIC_SPACE_SIZE);
+
+    memory_region_init_io(&s->msi_region, NULL, &xen_msi_region_ops, NULL,
+                          "xen-msi", MSI_REGION_SIZE);
 
 #if defined(CONFIG_XEN_CTRL_INTERFACE_VERSION) \
     && CONFIG_XEN_CTRL_INTERFACE_VERSION >= 420
