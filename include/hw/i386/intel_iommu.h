@@ -21,6 +21,7 @@
 
 #ifndef INTEL_IOMMU_H
 #define INTEL_IOMMU_H
+#include "qemu/queue.h"
 #include "hw/qdev.h"
 #include "sysemu/dma.h"
 
@@ -65,11 +66,12 @@ struct VTDContextCacheEntry {
 };
 
 struct VTDAddressSpace {
-    uint8_t bus_num;
+    PCIDevice *dev;
     uint8_t devfn;
     AddressSpace as;
     MemoryRegion iommu;
     IntelIOMMUState *iommu_state;
+    QLIST_ENTRY(VTDAddressSpace) iommu_next; /* For traversal by the iommu */
     VTDContextCacheEntry context_cache_entry;
 };
 
@@ -114,7 +116,7 @@ struct IntelIOMMUState {
     GHashTable *iotlb;              /* IOTLB */
 
     MemoryRegionIOMMUOps iommu_ops;
-    VTDAddressSpace **address_spaces[VTD_PCI_BUS_MAX];
+    QLIST_HEAD(, VTDAddressSpace) address_spaces;
 };
 
 #endif

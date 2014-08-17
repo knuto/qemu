@@ -349,33 +349,25 @@ static void mch_reset(DeviceState *qdev)
 
 static AddressSpace *q35_host_dma_iommu(PCIDevice *dev, void *opaque)
 {
-    IntelIOMMUState *s = opaque;
-    VTDAddressSpace **pvtd_as;
-    int bus_num = pci_bus_num(dev->bus);
-    int devfn = dev->devfn;
+    VTDAddressSpace *as = NULL;
+    struct IntelIOMMUState *s = opaque;
 
-    assert(0 <= bus_num && bus_num <= VTD_PCI_BUS_MAX);
-    assert(0 <= devfn && devfn <= VTD_PCI_DEVFN_MAX);
-
-    pvtd_as = s->address_spaces[bus_num];
-    if (!pvtd_as) {
-        /* No corresponding free() */
-        pvtd_as = g_malloc0(sizeof(VTDAddressSpace *) * VTD_PCI_DEVFN_MAX);
-        s->address_spaces[bus_num] = pvtd_as;
+    if (dev && dev->dma_as) {
+        as = container_of(dev->dma_as, VTDAddressSpace, as);
     }
-    if (!pvtd_as[devfn]) {
-        pvtd_as[devfn] = g_malloc0(sizeof(VTDAddressSpace));
-
-        pvtd_as[devfn]->bus_num = (uint8_t)bus_num;
-        pvtd_as[devfn]->devfn = (uint8_t)devfn;
-        pvtd_as[devfn]->iommu_state = s;
-        pvtd_as[devfn]->context_cache_entry.context_cache_gen = 0;
-        memory_region_init_iommu(&pvtd_as[devfn]->iommu, OBJECT(s),
+    if (!as) {
+        as = g_malloc0(sizeof(VTDAddressSpace));
+        as->dev = dev;
+        as->devfn = dev->devfn;
+        as->iommu_state = s;
+        as->context_cache_entry.context_cache_gen = 0;
+        memory_region_init_iommu(&as->iommu, OBJECT(s),
                                  &s->iommu_ops, "intel_iommu", UINT64_MAX);
-        address_space_init(&pvtd_as[devfn]->as,
-                           &pvtd_as[devfn]->iommu, "intel_iommu");
+        address_space_init(&as->as,
+                           &as->iommu, "intel_iommu");
+        QLIST_INSERT_HEAD(&s->address_spaces, as, iommu_next);
     }
-    return &pvtd_as[devfn]->as;
+    return &as->as;
 }
 
 static void mch_init_dmar(MCHPCIState *mch)

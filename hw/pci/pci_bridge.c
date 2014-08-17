@@ -376,8 +376,14 @@ int pci_bridge_initfn(PCIDevice *dev, const char *typename)
     sec_bus->address_space_io = &br->address_space_io;
     memory_region_init(&br->address_space_io, OBJECT(br), "pci_bridge_io", 65536);
     br->windows = pci_bridge_region_init(br);
+
     QLIST_INIT(&sec_bus->child);
     QLIST_INSERT_HEAD(&parent->child, sec_bus, sibling);
+
+    if (dev->bus->iommu_opaque) {
+        pci_setup_iommu(sec_bus, dev->bus->iommu_fn, dev->bus->iommu_opaque);
+    }
+
     return 0;
 }
 

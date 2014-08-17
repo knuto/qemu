@@ -20,6 +20,7 @@
  */
 
 #include "hw/sysbus.h"
+#include "hw/pci/pci.h"
 #include "exec/address-spaces.h"
 #include "intel_iommu_internal.h"
 
@@ -30,6 +31,7 @@ enum {
     DEBUG_CACHE,
 };
 #define VTD_DBGBIT(x)   (1 << DEBUG_##x)
+
 static int vtd_dbgflags = VTD_DBGBIT(GENERAL) | VTD_DBGBIT(CSR);
 
 #define VTD_DPRINTF(what, fmt, ...) do { \
@@ -166,24 +168,11 @@ static gboolean vtd_hash_remove_by_page(gpointer key, gpointer value,
  */
 static void vtd_reset_context_cache(IntelIOMMUState *s)
 {
-    VTDAddressSpace **pvtd_as;
     VTDAddressSpace *vtd_as;
-    uint32_t bus_it;
-    uint32_t devfn_it;
 
     VTD_DPRINTF(CACHE, "global context_cache_gen=1");
-    for (bus_it = 0; bus_it < VTD_PCI_BUS_MAX; ++bus_it) {
-        pvtd_as = s->address_spaces[bus_it];
-        if (!pvtd_as) {
-            continue;
-        }
-        for (devfn_it = 0; devfn_it < VTD_PCI_DEVFN_MAX; ++devfn_it) {
-            vtd_as = pvtd_as[devfn_it];
-            if (!vtd_as) {
-                continue;
-            }
-            vtd_as->context_cache_entry.context_cache_gen = 0;
-        }
+    QLIST_FOREACH(vtd_as, &s->address_spaces, iommu_next) {
+        vtd_as->context_cache_entry.context_cache_gen = 0;
     }
     s->context_cache_gen = 1;
 }
@@ -745,13 +734,11 @@ static inline bool vtd_is_interrupt_addr(hwaddr addr)
 
 /* Map dev to context-entry then do a paging-structures walk to do a iommu
  * translation.
- * @bus_num: The bus number
- * @devfn: The devfn, which is the  combined of device and function number
+ * @vtd_as: The address space to translate against
  * @is_write: The access is a write operation
  * @entry: IOMMUTLBEntry that contain the addr to be translated and result
  */
-static void vtd_do_iommu_translate(VTDAddressSpace *vtd_as, uint8_t bus_num,
-                                   uint8_t devfn, hwaddr addr, bool is_write,
+static void vtd_do_iommu_translate(VTDAddressSpace *vtd_as, hwaddr addr, bool is_write,
                                    IOMMUTLBEntry *entry)
 {
     IntelIOMMUState *s = vtd_as->iommu_state;
@@ -759,6 +746,8 @@ static void vtd_do_iommu_translate(VTDAddressSpace *vtd_as, uint8_t bus_num,
     VTDContextCacheEntry *cc_entry = &vtd_as->context_cache_entry;
     uint64_t slpte;
     uint32_t level;
+    uint8_t bus_num = pci_bus_num(vtd_as->dev->bus);
+    uint8_t devfn = vtd_as->devfn;
     uint16_t source_id = vtd_make_source_id(bus_num, devfn);
     int ret_fr;
     bool is_fpd_set = false;
@@ -878,10 +867,10 @@ static void vtd_context_device_invalidate(IntelIOMMUState *s,
                                           uint16_t func_mask)
 {
     uint16_t mask;
-    VTDAddressSpace **pvtd_as;
     VTDAddressSpace *vtd_as;
     uint16_t devfn;
-    uint16_t devfn_it;
+    uint16_t devfn_it = 0;
+    uint8_t bus_num, bus_num_it;
 
     switch (func_mask & 3) {
     case 0:
@@ -899,16 +888,18 @@ static void vtd_context_device_invalidate(IntelIOMMUState *s,
     }
     VTD_DPRINTF(INV, "device-selective invalidation source 0x%"PRIx16
                     " mask %"PRIu16, source_id, mask);
-    pvtd_as = s->address_spaces[VTD_SID_TO_BUS(source_id)];
-    if (pvtd_as) {
-        devfn = VTD_SID_TO_DEVFN(source_id);
-        for (devfn_it = 0; devfn_it < VTD_PCI_DEVFN_MAX; ++devfn_it) {
-            vtd_as = pvtd_as[devfn_it];
-            if (vtd_as && ((devfn_it & mask) == (devfn & mask))) {
-                VTD_DPRINTF(INV, "invalidate context-cahce of devfn 0x%"PRIx16,
-                            devfn_it);
-                vtd_as->context_cache_entry.context_cache_gen = 0;
-            }
+    bus_num = VTD_SID_TO_BUS(source_id);
+    devfn = VTD_SID_TO_DEVFN(source_id);
+
+    QLIST_FOREACH(vtd_as, &s->address_spaces, iommu_next) {
+        bus_num_it = pci_bus_num(vtd_as->dev->bus);
+        if (bus_num_it != bus_num) {
+            continue;
+        }
+        if ((devfn_it & mask) == (devfn & mask)) {
+            VTD_DPRINTF(INV, "invalidate context-cahce of devfn 0x%"PRIx16,
+                        devfn_it);
+            vtd_as->context_cache_entry.context_cache_gen = 0;
         }
     }
 }
@@ -1801,8 +1792,7 @@ static IOMMUTLBEntry vtd_iommu_translate(MemoryRegion *iommu, hwaddr addr,
         return ret;
     }
 
-    vtd_do_iommu_translate(vtd_as, vtd_as->bus_num, vtd_as->devfn, addr,
-                           is_write, &ret);
+    vtd_do_iommu_translate(vtd_as, addr, is_write, &ret);
     VTD_DPRINTF(MMU,
                 "bus %"PRIu8 " slot %"PRIu8 " func %"PRIu8 " devfn %"PRIu8
                 " gpa 0x%"PRIx64 " hpa 0x%"PRIx64, vtd_as->bus_num,
@@ -1927,7 +1917,7 @@ static void vtd_realize(DeviceState *dev, Error **errp)
     IntelIOMMUState *s = INTEL_IOMMU_DEVICE(dev);
 
     VTD_DPRINTF(GENERAL, "");
-    memset(s->address_spaces, 0, sizeof(s->address_spaces));
+    QLIST_INIT(&s->address_spaces);
     memory_region_init_io(&s->csrmem, OBJECT(s), &vtd_mem_ops, s,
                           "intel_iommu", DMAR_REG_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->csrmem);
