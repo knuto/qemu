@@ -21,6 +21,7 @@
 
 #ifndef INTEL_IOMMU_H
 #define INTEL_IOMMU_H
+#include "qemu/queue.h"
 #include "hw/qdev.h"
 #include "sysemu/dma.h"
 
@@ -30,6 +31,12 @@
 
 /* DMAR Hardware Unit Definition address (IOMMU unit) */
 #define Q35_HOST_BRIDGE_IOMMU_ADDR  0xfed90000ULL
+
+/* Special bus/devfn values used for interrupt remapping */
+#define Q35_PSEUDO_BUS_PLATFORM         0xff
+#define Q35_PSEUDO_DEVFN_IOAPIC         0x01
+#define Q35_PSEUDO_DEVFN_HPET           0x02
+
 
 #define VTD_PCI_BUS_MAX             256
 #define VTD_PCI_SLOT_MAX            32
@@ -65,13 +72,14 @@ struct VTDContextCacheEntry {
 };
 
 struct VTDAddressSpace {
-    uint8_t bus_num;
+    PCIDevice *dev;  /* If dev is NULL, bus is 0xff */
     uint8_t devfn;
     AddressSpace as;
     MemoryRegion iommu;
     AddressSpace int_remap_as;
     MemoryRegion int_remap_region;
     IntelIOMMUState *iommu_state;
+    QLIST_ENTRY(VTDAddressSpace) iommu_next; /* List for traversal by the iommu */
     VTDContextCacheEntry context_cache_entry;
 };
 
@@ -120,7 +128,7 @@ struct IntelIOMMUState {
     GHashTable *iotlb;              /* IOTLB */
 
     MemoryRegionIOMMUOps iommu_ops;
-    VTDAddressSpace **address_spaces[VTD_PCI_BUS_MAX];
+    QLIST_HEAD(,VTDAddressSpace) address_spaces;
 };
 
 extern const MemoryRegionOps vtd_int_remap_ops;
