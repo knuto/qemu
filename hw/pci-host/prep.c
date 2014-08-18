@@ -194,8 +194,7 @@ static void raven_set_irq(void *opaque, int irq_num, int level)
     qemu_set_irq(pic[irq_num] , level);
 }
 
-static AddressSpace *raven_pcihost_set_iommu(PCIBus *bus, void *opaque,
-                                             int devfn)
+static AddressSpace *raven_pcihost_set_iommu(PCIDevice *dev, void *opaque)
 {
     PREPPCIState *s = opaque;
 

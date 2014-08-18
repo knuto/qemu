@@ -472,7 +472,7 @@ static const MemoryRegionOps spapr_msi_ops = {
 /*
  * PHB PCI device
  */
-static AddressSpace *spapr_pci_dma_iommu(PCIBus *bus, void *opaque, int devfn)
+static AddressSpace *spapr_pci_dma_iommu(PCIDevice *dev, void *opaque)
 {
     sPAPRPHBState *phb = opaque;
 

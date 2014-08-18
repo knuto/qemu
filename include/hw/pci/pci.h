@@ -242,6 +242,7 @@ struct PCIDevice {
     char name[64];
     PCIIORegion io_regions[PCI_NUM_REGIONS];
     AddressSpace bus_master_as;
+    AddressSpace *dma_as;
     MemoryRegion bus_master_enable_region;
 
     /* do not access the following fields */
@@ -408,7 +409,8 @@ int pci_parse_devaddr(const char *addr, int *domp, int *busp,
 
 void pci_device_deassert_intx(PCIDevice *dev);
 
-typedef AddressSpace *(*PCIIOMMUFunc)(PCIBus *, void *, int);
+typedef AddressSpace *(*PCIIOMMUFunc)(PCIDevice *, void *);
+void pci_set_dma_address_space(AddressSpace *dma_address_space);
 
 AddressSpace *pci_device_iommu_address_space(PCIDevice *dev);
 void pci_setup_iommu(PCIBus *bus, PCIIOMMUFunc fn, void *opaque);

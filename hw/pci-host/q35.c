@@ -347,11 +347,12 @@ static void mch_reset(DeviceState *qdev)
     mch_update(mch);
 }
 
-static AddressSpace *q35_host_dma_iommu(PCIBus *bus, void *opaque, int devfn)
+static AddressSpace *q35_host_dma_iommu(PCIDevice *dev, void *opaque)
 {
     IntelIOMMUState *s = opaque;
     VTDAddressSpace **pvtd_as;
-    int bus_num = pci_bus_num(bus);
+    int bus_num = pci_bus_num(dev->bus);
+    int devfn = dev->devfn;
 
     assert(0 <= bus_num && bus_num <= VTD_PCI_BUS_MAX);
     assert(0 <= devfn && devfn <= VTD_PCI_DEVFN_MAX);

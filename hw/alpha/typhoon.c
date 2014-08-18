@@ -725,7 +725,7 @@ static const MemoryRegionIOMMUOps typhoon_iommu_ops = {
     .translate = typhoon_translate_iommu,
 };
 
-static AddressSpace *typhoon_pci_dma_iommu(PCIBus *bus, void *opaque, int devfn)
+static AddressSpace *typhoon_pci_dma_iommu(PCIDevice *dev, void *opaque)
 {
     TyphoonState *s = opaque;
     return &s->pchip.iommu_as;
