@@ -379,12 +379,11 @@ static AddressSpace *q35_host_dma_iommu(IntelIOMMUState *s, uint8_t bus_num,
     return &pvtd_as[devfn]->as;
 }
 
-static AddressSpace *q35_host_pcidev_iommu(PCIBus *bus, void *opaque, int devfn)
+static AddressSpace *q35_host_pcidev_iommu(PCIDevice *dev, void *opaque)
 {
     IntelIOMMUState *s = opaque;
-    int bus_num = pci_bus_num(bus);
-
-    return q35_host_dma_iommu(s, bus_num, devfn);
+    int bus_num = pci_bus_num(dev->bus);
+    return q35_host_dma_iommu(s, bus_num, dev->devfn);
 }
 
 static void mch_init_dmar(MCHPCIState *mch)

@@ -496,7 +496,7 @@ void spapr_pci_msi_init(sPAPREnvironment *spapr, hwaddr addr)
 /*
  * PHB PCI device
  */
-static AddressSpace *spapr_pci_dma_iommu(PCIBus *bus, void *opaque, int devfn)
+static AddressSpace *spapr_pci_dma_iommu(PCIDevice *dev, void *opaque)
 {
     sPAPRPHBState *phb = opaque;
 

@@ -810,7 +810,6 @@ static PCIDevice *do_pci_register_device(PCIDevice *pci_dev, PCIBus *bus,
     PCIDeviceClass *pc = PCI_DEVICE_GET_CLASS(pci_dev);
     PCIConfigReadFunc *config_read = pc->config_read;
     PCIConfigWriteFunc *config_write = pc->config_write;
-    AddressSpace *dma_as;
 
     if (devfn < 0) {
         for(devfn = bus->devfn_min ; devfn < ARRAY_SIZE(bus->devices);
@@ -829,11 +828,11 @@ static PCIDevice *do_pci_register_device(PCIDevice *pci_dev, PCIBus *bus,
 
     pci_dev->bus = bus;
     pci_dev->devfn = devfn;
-    dma_as = pci_device_iommu_address_space(pci_dev);
+    pci_dev->dma_as = pci_device_iommu_address_space(pci_dev);
 
     memory_region_init_alias(&pci_dev->bus_master_enable_region,
                              OBJECT(pci_dev), "bus master",
-                             dma_as->root, 0, memory_region_size(dma_as->root));
+                             pci_dev->dma_as->root, 0, memory_region_size(pci_dev->dma_as->root));
     memory_region_set_enabled(&pci_dev->bus_master_enable_region, false);
     address_space_init(&pci_dev->bus_master_as, &pci_dev->bus_master_enable_region,
                        name);
@@ -2287,7 +2286,7 @@ AddressSpace *pci_device_iommu_address_space(PCIDevice *dev)
     PCIBus *bus = PCI_BUS(dev->bus);
 
     if (bus->iommu_fn) {
-        return bus->iommu_fn(bus, bus->iommu_opaque, dev->devfn);
+        return bus->iommu_fn(dev, bus->iommu_opaque);
     }
 
     if (bus->parent_dev) {

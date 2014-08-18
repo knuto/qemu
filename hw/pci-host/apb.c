@@ -196,7 +196,7 @@ static inline void pbm_clear_request(APBState *s, unsigned int irq_num)
     s->irq_request = NO_IRQ_REQUEST;
 }
 
-static AddressSpace *pbm_pci_dma_iommu(PCIBus *bus, void *opaque, int devfn)
+static AddressSpace *pbm_pci_dma_iommu(PCIDevice *dev, void *opaque)
 {
     IOMMUState *is = opaque;
 
