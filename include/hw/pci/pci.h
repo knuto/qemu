@@ -11,8 +11,6 @@
 /* PCI includes legacy ISA access.  */
 #include "hw/isa/isa.h"
 
-#include "hw/pci/pcie.h"
-
 /* PCI bus */
 
 #define PCI_DEVFN(slot, func)   ((((slot) & 0x1f) << 3) | ((func) & 0x07))
@@ -132,6 +130,7 @@ enum {
 #define QEMU_PCI_VGA_IO_HI_SIZE 0x20
 
 #include "hw/pci/pci_regs.h"
+#include "hw/pci/pcie.h"
 
 /* PCI HEADER_TYPE */
 #define  PCI_HEADER_TYPE_MULTI_FUNCTION 0x80
@@ -421,6 +420,9 @@ typedef AddressSpace *(*PCIIOMMUFunc)(PCIBus *, void *, int);
 AddressSpace *pci_device_iommu_address_space(PCIDevice *dev);
 void pci_setup_iommu(PCIBus *bus, PCIIOMMUFunc fn, void *opaque);
 
+pcibus_t pci_bar_address(PCIDevice *d,
+                         int reg, uint8_t type, pcibus_t size);
+
 static inline void
 pci_set_byte(uint8_t *config, uint8_t val)
 {
@@ -670,6 +672,11 @@ static inline void pci_irq_pulse(PCIDevice *pci_dev)
 static inline int pci_is_express(const PCIDevice *d)
 {
     return d->cap_present & QEMU_PCI_CAP_EXPRESS;
+}
+
+static inline int pci_is_vf(const PCIDevice *d)
+{
+    return d->exp.sriov_vf.pf != NULL;
 }
 
 static inline uint32_t pci_config_size(const PCIDevice *d)
