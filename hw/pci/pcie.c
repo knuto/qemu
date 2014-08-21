@@ -253,7 +253,7 @@ void pcie_cap_slot_hotplug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
      * Right now, only a device of function = 0 is allowed to be
      * hot plugged/unplugged.
      */
-    assert(PCI_FUNC(pci_dev->devfn) == 0);
+    assert(PCI_FUNC(pci_dev->devfn) == 0 || pci_is_vf(pci_dev));
 
     pci_word_test_and_set_mask(exp_cap + PCI_EXP_SLTSTA,
                                PCI_EXP_SLTSTA_PDS);
