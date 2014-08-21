@@ -253,7 +253,7 @@ void pcie_cap_slot_hotplug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
      * Right now, only a device of function = 0 is allowed to be
      * hot plugged/unplugged.
      */
-    assert(PCI_FUNC(pci_dev->devfn) == 0);
+    assert(PCI_FUNC(pci_dev->devfn) == 0 || pci_is_vf(pci_dev));
 
     pci_word_test_and_set_mask(exp_cap + PCI_EXP_SLTSTA,
                                PCI_EXP_SLTSTA_PDS);
@@ -265,10 +265,11 @@ void pcie_cap_slot_hot_unplug_request_cb(HotplugHandler *hotplug_dev,
                                          DeviceState *dev, Error **errp)
 {
     uint8_t *exp_cap;
+    PCIDevice *pdev = PCI_DEVICE(hotplug_dev);
 
-    pcie_cap_slot_hotplug_common(PCI_DEVICE(hotplug_dev), dev, &exp_cap, errp);
+    pcie_cap_slot_hotplug_common(pdev, dev, &exp_cap, errp);
 
-    pcie_cap_slot_push_attention_button(PCI_DEVICE(hotplug_dev));
+    pcie_cap_slot_push_attention_button(pdev);
 }
 
 /* pci express slot for pci express root/downstream port
@@ -408,7 +409,7 @@ void pcie_cap_slot_write_config(PCIDevice *dev,
     }
 
     /*
-     * If the slot is polulated, power indicator is off and power
+     * If the slot is populated, power indicator is off and power
      * controller is off, it is safe to detach the devices.
      */
     if ((sltsta & PCI_EXP_SLTSTA_PDS) && (val & PCI_EXP_SLTCTL_PCC) &&
