@@ -35,7 +35,6 @@
 #include "hw/pci/msi.h"
 #include "hw/pci/msix.h"
 #include "exec/address-spaces.h"
-#include "hw/hotplug.h"
 
 //#define DEBUG_PCI
 #ifdef DEBUG_PCI
@@ -126,6 +125,9 @@ static int pci_bar(PCIDevice *d, int reg)
 {
     uint8_t type;
 
+    /* PCIe virtual functions do not have their own BARs */
+    assert(!pci_is_vf(d));
+
     if (reg != PCI_ROM_SLOT)
         return PCI_BASE_ADDRESS_0 + reg * 4;
 
@@ -184,22 +186,13 @@ void pci_device_deassert_intx(PCIDevice *dev)
     }
 }
 
-static void pci_do_device_reset(PCIDevice *dev)
+static void pci_reset_regions(PCIDevice *dev)
 {
     int r;
+    if (pci_is_vf(dev)) {
+        return;
+    }
 
-    pci_device_deassert_intx(dev);
-    assert(dev->irq_state == 0);
-
-    /* Clear all writable bits */
-    pci_word_test_and_clear_mask(dev->config + PCI_COMMAND,
-                                 pci_get_word(dev->wmask + PCI_COMMAND) |
-                                 pci_get_word(dev->w1cmask + PCI_COMMAND));
-    pci_word_test_and_clear_mask(dev->config + PCI_STATUS,
-                                 pci_get_word(dev->wmask + PCI_STATUS) |
-                                 pci_get_word(dev->w1cmask + PCI_STATUS));
-    dev->config[PCI_CACHE_LINE_SIZE] = 0x0;
-    dev->config[PCI_INTERRUPT_LINE] = 0x0;
     for (r = 0; r < PCI_NUM_REGIONS; ++r) {
         PCIIORegion *region = &dev->io_regions[r];
         if (!region->size) {
@@ -213,6 +206,27 @@ static void pci_do_device_reset(PCIDevice *dev)
             pci_set_long(dev->config + pci_bar(dev, r), region->type);
         }
     }
+}
+
+static void pci_do_device_reset(PCIDevice *dev)
+{
+    qdev_reset_all(&dev->qdev);
+
+    dev->irq_state = 0;
+    pci_update_irq_status(dev);
+    pci_device_deassert_intx(dev);
+    assert(dev->irq_state == 0);
+
+    /* Clear all writable bits */
+    pci_word_test_and_clear_mask(dev->config + PCI_COMMAND,
+                                 pci_get_word(dev->wmask + PCI_COMMAND) |
+                                 pci_get_word(dev->w1cmask + PCI_COMMAND));
+    pci_word_test_and_clear_mask(dev->config + PCI_STATUS,
+                                 pci_get_word(dev->wmask + PCI_STATUS) |
+                                 pci_get_word(dev->w1cmask + PCI_STATUS));
+    dev->config[PCI_CACHE_LINE_SIZE] = 0x0;
+    dev->config[PCI_INTERRUPT_LINE] = 0x0;
+    pci_reset_regions(dev);
     pci_update_mappings(dev);
 
     msi_reset(dev);
@@ -734,6 +748,15 @@ static int pci_init_multifunction(PCIBus *bus, PCIDevice *dev)
         dev->config[PCI_HEADER_TYPE] |= PCI_HEADER_TYPE_MULTI_FUNCTION;
     }
 
+    /* With SR/IOV and ARI, a device at function 0 need not be a multifunction
+     * device, as it may just be a VF that ended up with function 0 in
+     * the legacy PCI interpretation. Avoid failing in such cases:
+     */
+    if (pci_is_vf(dev) &&
+        dev->exp.sriov_vf.pf->cap_present & QEMU_PCI_CAP_MULTIFUNCTION) {
+        return 0;
+    }
+
     /*
      * multifunction bit is interpreted in two ways as follows.
      *   - all functions must set the bit to 1.
@@ -920,6 +943,7 @@ void pci_register_bar(PCIDevice *pci_dev, int region_num,
     uint64_t wmask;
     pcibus_t size = memory_region_size(memory);
 
+    assert(!pci_is_vf(pci_dev)); /* VFs must use pcie_register_vf_bar */
     assert(region_num >= 0);
     assert(region_num < PCI_NUM_REGIONS);
     if (size & (size-1)) {
@@ -1018,18 +1042,47 @@ pcibus_t pci_get_bar_addr(PCIDevice *pci_dev, int region_num)
     return pci_dev->io_regions[region_num].addr;
 }
 
-static pcibus_t pci_bar_address(PCIDevice *d,
-				int reg, uint8_t type, pcibus_t size)
+
+static pcibus_t pci_config_get_bar_addr(PCIDevice *d, int reg,
+                                        uint8_t type, pcibus_t size)
+{
+    pcibus_t new_addr;
+    if (!pci_is_vf(d)) {
+        int bar = pci_bar(d, reg);
+        if (type & PCI_BASE_ADDRESS_MEM_TYPE_64) {
+            new_addr = pci_get_quad(d->config + bar);
+        } else {
+            new_addr = pci_get_long(d->config + bar);
+        }
+    } else {
+        PCIDevice *pf = d->exp.sriov_vf.pf;
+        int bar = pf->exp.sriov_cap + PCI_SRIOV_BAR + reg * 4;
+        uint32_t vf_num = d->devfn - (pf->devfn + 1);
+        if (type & PCI_BASE_ADDRESS_MEM_TYPE_64) {
+            new_addr = pci_get_quad(pf->config + bar);
+        } else {
+            new_addr = pci_get_long(pf->config + bar);
+        }
+        new_addr += vf_num * size;
+    }
+    if (reg != PCI_ROM_SLOT) {
+        /* Preserve the rom enable bit */
+        new_addr &= ~(size - 1);
+    }
+    return new_addr;
+}
+
+pcibus_t pci_bar_address(PCIDevice *d,
+                         int reg, uint8_t type, pcibus_t size)
 {
     pcibus_t new_addr, last_addr;
-    int bar = pci_bar(d, reg);
     uint16_t cmd = pci_get_word(d->config + PCI_COMMAND);
 
     if (type & PCI_BASE_ADDRESS_SPACE_IO) {
         if (!(cmd & PCI_COMMAND_IO)) {
             return PCI_BAR_UNMAPPED;
         }
-        new_addr = pci_get_long(d->config + bar) & ~(size - 1);
+        new_addr = pci_config_get_bar_addr(d, reg, type, size);
         last_addr = new_addr + size - 1;
         /* Check if 32 bit BAR wraps around explicitly.
          * TODO: make priorities correct and remove this work around.
@@ -1043,11 +1096,7 @@ static pcibus_t pci_bar_address(PCIDevice *d,
     if (!(cmd & PCI_COMMAND_MEMORY)) {
         return PCI_BAR_UNMAPPED;
     }
-    if (type & PCI_BASE_ADDRESS_MEM_TYPE_64) {
-        new_addr = pci_get_quad(d->config + bar);
-    } else {
-        new_addr = pci_get_long(d->config + bar);
-    }
+    new_addr = pci_config_get_bar_addr(d, reg, type, size);
     /* the ROM slot has a specific enable bit */
     if (reg == PCI_ROM_SLOT && !(new_addr & PCI_ROM_ADDRESS_ENABLE)) {
         return PCI_BAR_UNMAPPED;
@@ -1173,6 +1222,7 @@ void pci_default_write_config(PCIDevice *d, uint32_t addr, uint32_t val_in, int 
 
     msi_write_config(d, addr, val_in, l);
     msix_write_config(d, addr, val_in, l);
+    pcie_sriov_config_write(d, addr, val_in, l);
 }
 
 /***********************************************************/
@@ -1777,7 +1827,6 @@ static int pci_qdev_init(DeviceState *qdev)
         is_default_rom = true;
     }
     pci_add_option_rom(pci_dev, is_default_rom);
-
     return 0;
 }
 
