@@ -35,6 +35,7 @@
 #include "qemu/iov.h"
 
 #include "e1000_regs.h"
+#include "e1000.h"
 
 #define E1000_DEBUG
 
@@ -74,101 +75,6 @@ static int debugflags = DBGBIT(TXERR) | DBGBIT(GENERAL);
  *  E1000_DEV_ID_82545EM_COPPER works with Linux and OS X >= 10.6
  *  Others never tested
  */
-
-typedef struct E1000State_st {
-    /*< private >*/
-    PCIDevice parent_obj;
-    /*< public >*/
-
-    NICState *nic;
-    NICConf conf;
-    MemoryRegion mmio;
-    MemoryRegion io;
-
-    uint32_t mac_reg[0x8000];
-    uint16_t phy_reg[0x20];
-    uint16_t eeprom_data[64];
-
-    uint32_t rxbuf_size;
-    uint32_t rxbuf_min_shift;
-    struct e1000_tx {
-        unsigned char header[256];
-        unsigned char vlan_header[4];
-        /* Fields vlan and data must not be reordered or separated. */
-        unsigned char vlan[4];
-        unsigned char data[0x10000];
-        uint16_t size;
-        unsigned char sum_needed;
-        unsigned char vlan_needed;
-        uint8_t ipcss;
-        uint8_t ipcso;
-        uint16_t ipcse;
-        uint8_t tucss;
-        uint8_t tucso;
-        uint16_t tucse;
-        uint8_t hdr_len;
-        uint16_t mss;
-        uint32_t paylen;
-        uint16_t tso_frames;
-        char tse;
-        int8_t ip;
-        int8_t tcp;
-        char cptse;     // current packet tse bit
-    } tx;
-
-    struct {
-        uint32_t val_in;	// shifted in from guest driver
-        uint16_t bitnum_in;
-        uint16_t bitnum_out;
-        uint16_t reading;
-        uint32_t old_eecd;
-    } eecd_state;
-
-    QEMUTimer *autoneg_timer;
-
-    QEMUTimer *mit_timer;      /* Mitigation timer. */
-    bool mit_timer_on;         /* Mitigation timer is running. */
-    bool mit_irq_level;        /* Tracks interrupt pin level. */
-    uint32_t mit_ide;          /* Tracks E1000_TXD_CMD_IDE bit. */
-
-/* Compatibility flags for migration to/from qemu 1.3.0 and older */
-#define E1000_FLAG_AUTONEG_BIT 0
-#define E1000_FLAG_MIT_BIT 1
-#define E1000_FLAG_AUTONEG (1 << E1000_FLAG_AUTONEG_BIT)
-#define E1000_FLAG_MIT (1 << E1000_FLAG_MIT_BIT)
-    uint32_t compat_flags;
-} E1000State;
-
-typedef struct E1000BaseClass {
-    PCIDeviceClass parent_class;
-    uint16_t phy_id2;
-} E1000BaseClass;
-
-#define TYPE_E1000_BASE "e1000-base"
-
-#define E1000(obj) \
-    OBJECT_CHECK(E1000State, (obj), TYPE_E1000_BASE)
-
-#define E1000_DEVICE_CLASS(klass) \
-     OBJECT_CLASS_CHECK(E1000BaseClass, (klass), TYPE_E1000_BASE)
-#define E1000_DEVICE_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(E1000BaseClass, (obj), TYPE_E1000_BASE)
-
-#define	defreg(x)	x = (E1000_##x>>2)
-enum {
-    defreg(CTRL),	defreg(EECD),	defreg(EERD),	defreg(GPRC),
-    defreg(GPTC),	defreg(ICR),	defreg(ICS),	defreg(IMC),
-    defreg(IMS),	defreg(LEDCTL),	defreg(MANC),	defreg(MDIC),
-    defreg(MPC),	defreg(PBA),	defreg(RCTL),	defreg(RDBAH),
-    defreg(RDBAL),	defreg(RDH),	defreg(RDLEN),	defreg(RDT),
-    defreg(STATUS),	defreg(SWSM),	defreg(TCTL),	defreg(TDBAH),
-    defreg(TDBAL),	defreg(TDH),	defreg(TDLEN),	defreg(TDT),
-    defreg(TORH),	defreg(TORL),	defreg(TOTH),	defreg(TOTL),
-    defreg(TPR),	defreg(TPT),	defreg(TXDCTL),	defreg(WUFC),
-    defreg(RA),		defreg(MTA),	defreg(CRCERRS),defreg(VFTA),
-    defreg(VET),        defreg(RDTR),   defreg(RADV),   defreg(TADV),
-    defreg(ITR),
-};
 
 static void
 e1000_link_down(E1000State *s)
@@ -398,7 +304,7 @@ rxbufsize(uint32_t v)
     return 2048;
 }
 
-static void e1000_reset(void *opaque)
+void e1000_reset(void *opaque)
 {
     E1000State *d = opaque;
     E1000BaseClass *edc = E1000_DEVICE_GET_CLASS(d);
@@ -1507,8 +1413,7 @@ e1000_cleanup(NetClientState *nc)
     s->nic = NULL;
 }
 
-static void
-pci_e1000_uninit(PCIDevice *dev)
+void pci_e1000_uninit(PCIDevice *dev)
 {
     E1000State *d = E1000(dev);
 
@@ -1529,10 +1434,11 @@ static NetClientInfo net_e1000_info = {
     .link_status_changed = e1000_set_link_status,
 };
 
-static int pci_e1000_init(PCIDevice *pci_dev)
+int pci_e1000_init(PCIDevice *pci_dev)
 {
     DeviceState *dev = DEVICE(pci_dev);
     E1000State *d = E1000(pci_dev);
+    E1000BaseClass *edc = E1000_DEVICE_GET_CLASS(d);
     PCIDeviceClass *pdc = PCI_DEVICE_GET_CLASS(pci_dev);
     uint8_t *pci_conf;
     uint16_t checksum = 0;
@@ -1548,9 +1454,12 @@ static int pci_e1000_init(PCIDevice *pci_dev)
 
     e1000_mmio_setup(d);
 
-    pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
-
-    pci_register_bar(pci_dev, 1, PCI_BASE_ADDRESS_SPACE_IO, &d->io);
+    if (pci_is_vf(pci_dev)) {
+        pcie_sriov_vf_register_bar(pci_dev, 0, &d->mmio);
+    } else {
+        pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
+        pci_register_bar(pci_dev, edc->io_bar, PCI_BASE_ADDRESS_SPACE_IO, &d->io);
+    }
 
     memmove(d->eeprom_data, e1000_eeprom_template,
         sizeof e1000_eeprom_template);
@@ -1592,14 +1501,7 @@ static Property e1000_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-typedef struct E1000Info {
-    const char *name;
-    uint16_t   device_id;
-    uint8_t    revision;
-    uint16_t   phy_id2;
-} E1000Info;
-
-static void e1000_class_init(ObjectClass *klass, void *data)
+void e1000_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
@@ -1613,6 +1515,7 @@ static void e1000_class_init(ObjectClass *klass, void *data)
     k->device_id = info->device_id;
     k->revision = info->revision;
     e->phy_id2 = info->phy_id2;
+    e->io_bar = info->io_bar;
     k->class_id = PCI_CLASS_NETWORK_ETHERNET;
     set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
     dc->desc = "Intel Gigabit Ethernet";
@@ -1634,18 +1537,21 @@ static const E1000Info e1000_devices[] = {
         .name      = "e1000-82540em",
         .device_id = E1000_DEV_ID_82540EM,
         .revision  = 0x03,
+        .io_bar    = 1,
         .phy_id2   = E1000_PHY_ID2_8254xx_DEFAULT,
     },
     {
         .name      = "e1000-82544gc",
         .device_id = E1000_DEV_ID_82544GC_COPPER,
         .revision  = 0x03,
+        .io_bar    = 1,
         .phy_id2   = E1000_PHY_ID2_82544x,
     },
     {
         .name      = "e1000-82545em",
         .device_id = E1000_DEV_ID_82545EM_COPPER,
         .revision  = 0x03,
+        .io_bar    = 1,
         .phy_id2   = E1000_PHY_ID2_8254xx_DEFAULT,
     },
 };
