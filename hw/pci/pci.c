@@ -1994,7 +1994,7 @@ static void pci_qdev_realize(DeviceState *qdev, Error **errp)
     bus = PCI_BUS(qdev_get_parent_bus(qdev));
     pci_dev = do_pci_register_device(pci_dev, bus,
                                      object_get_typename(OBJECT(qdev)),
-                                     pci_dev->devfn, errp);
+                                     object_property_get_int(OBJECT(qdev), "addr", NULL), errp);
     if (pci_dev == NULL)
         return;
 
