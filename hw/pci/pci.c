@@ -2020,7 +2020,7 @@ static void pci_qdev_realize(DeviceState *qdev, Error **errp)
 
     pci_dev = do_pci_register_device(pci_dev,
                                      object_get_typename(OBJECT(qdev)),
-                                     pci_dev->devfn, errp);
+                                     object_property_get_int(OBJECT(qdev), "addr", NULL), errp);
     if (pci_dev == NULL)
         return;
 
