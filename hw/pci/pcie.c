@@ -622,7 +622,7 @@ void pcie_cap_slot_write_config(PCIDevice *dev,
     }
 
     /*
-     * If the slot is polulated, power indicator is off and power
+     * If the slot is populated, power indicator is off and power
      * controller is off, it is safe to detach the devices.
      */
     if ((sltsta & PCI_EXP_SLTSTA_PDS) && (val & PCI_EXP_SLTCTL_PCC) &&
