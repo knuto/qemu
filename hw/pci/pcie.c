@@ -355,7 +355,7 @@ void pcie_cap_slot_hot_unplug_request_cb(HotplugHandler *hotplug_dev,
     PCIDevice *pci_dev = PCI_DEVICE(dev);
     PCIBus *bus = pci_dev->bus;
 
-    pcie_cap_slot_hotplug_common(PCI_DEVICE(hotplug_dev), dev, &exp_cap, errp);
+    pcie_cap_slot_hotplug_common(pci_dev, dev, &exp_cap, errp);
 
     /* In case user cancel the operation of multi-function hot-add,
      * remove the function that is unexposed to guest individually,
@@ -503,7 +503,7 @@ void pcie_cap_slot_write_config(PCIDevice *dev,
     }
 
     /*
-     * If the slot is polulated, power indicator is off and power
+     * If the slot is populated, power indicator is off and power
      * controller is off, it is safe to detach the devices.
      */
     if ((sltsta & PCI_EXP_SLTSTA_PDS) && (val & PCI_EXP_SLTCTL_PCC) &&
