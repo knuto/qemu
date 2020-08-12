@@ -285,6 +285,32 @@ e1000e_msix_use_vector_fail(uint32_t vec, int32_t res) "Failed to use MSI-X vect
 e1000e_mac_set_permanent(uint8_t b0, uint8_t b1, uint8_t b2, uint8_t b3, uint8_t b4, uint8_t b5) "Set permanent MAC: %02x:%02x:%02x:%02x:%02x:%02x"
 e1000e_cfg_support_virtio(bool support) "Virtio header supported: %d"
 
+# hw/net/igb.c
+igb_cb_pci_realize(void) "IGB PCI realize entry"
+igb_cb_pci_uninit(void) "IGB PCI unit entry"
+igb_cb_qdev_reset(void) "IGB qdev reset entry"
+igb_cb_pre_save(void) "IGB pre save entry"
+igb_cb_post_load(void) "IGB post load entry"
+
+igb_write_config(uint32_t address, uint32_t val, int len) "CONFIG write 0x%"PRIx32", value: 0x%"PRIx32", len: %"PRId32
+igbvf_write_config(uint32_t address, uint32_t val, int len) "CONFIG write 0x%"PRIx32", value: 0x%"PRIx32", len: %"PRId32
+igb_io_write_addr(uint64_t addr) "IOADDR write 0x%"PRIx64
+igb_io_write_data(uint64_t addr, uint64_t val) "IODATA write 0x%"PRIx64", value: 0x%"PRIx64
+igb_io_read_addr(uint64_t addr) "IOADDR read 0x%"PRIx64
+igb_io_read_data(uint64_t addr, uint64_t val) "IODATA read 0x%"PRIx64", value: 0x%"PRIx64
+igb_wrn_io_write_unknown(uint64_t addr) "IO write unknown address 0x%"PRIx64
+igb_wrn_io_read_unknown(uint64_t addr) "IO read unknown address 0x%"PRIx64
+igb_wrn_io_addr_undefined(uint64_t addr) "IO undefined register 0x%"PRIx64
+igb_wrn_io_addr_flash(uint64_t addr) "IO flash access (0x%"PRIx64") not implemented"
+igb_wrn_io_addr_unknown(uint64_t addr) "IO unknown register 0x%"PRIx64
+
+igb_msi_init_fail(int32_t res) "Failed to initialize MSI, error %d"
+igb_msix_init_fail(int32_t res) "Failed to initialize MSI-X, error %d"
+igb_msix_use_vector_fail(uint32_t vec, int32_t res) "Failed to use MSI-X vector %d, error %d"
+
+igb_cfg_support_virtio(bool support) "Virtio header supported: %d"
+igb_mac_set_permanent(uint8_t b0, uint8_t b1, uint8_t b2, uint8_t b3, uint8_t b4, uint8_t b5) "Set permanent MAC: %02x:%02x:%02x:%02x:%02x:%02x"
+
 # spapr_llan.c
 spapr_vlan_get_rx_bd_from_pool_found(int pool, int32_t count, uint32_t rx_bufs) "pool=%d count=%"PRId32" rxbufs=%"PRIu32
 spapr_vlan_get_rx_bd_from_page(int buf_ptr, uint64_t bd) "use_buf_ptr=%d bd=0x%016"PRIx64

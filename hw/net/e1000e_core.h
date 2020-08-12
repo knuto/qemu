@@ -43,6 +43,12 @@
 #define E1000E_MSIX_VEC_NUM     (5)
 #define E1000E_NUM_QUEUES       (2)
 
+/* TBD: handle igb sizes, vectors = 25, queues = 16!
+ * Just set some conservative values here to work with for now
+ */
+#define IGB_MSIX_VEC_NUM     (5)
+#define IGB_NUM_QUEUES       (2)
+
 typedef struct E1000Core E1000ECore;
 
 enum { PHY_R = BIT(0),

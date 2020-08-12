@@ -28,6 +28,7 @@
 #include "e1000_regs.h"
 
 #define defreg(x)   x = (E1000_##x >> 2)
+#define idefreg(x)  I_##x = (IGB_##x >> 2)
 enum {
     defreg(CTRL),    defreg(EECD),    defreg(EERD),    defreg(GPRC),
     defreg(GPTC),    defreg(ICR),     defreg(ICS),     defreg(IMC),
@@ -96,7 +97,13 @@ enum {
     defreg(RDFT_A),  defreg(TDH_A),   defreg(TDT_A),   defreg(TIDV_A),
     defreg(TDFH_A),  defreg(TDFT_A),  defreg(RA_A),    defreg(RDBAL0_A),
     defreg(TDBAL_A), defreg(TDLEN_A), defreg(VFTA_A),  defreg(RDLEN0_A),
-    defreg(FCRTL_A), defreg(FCRTH_A)
+    defreg(FCRTL_A), defreg(FCRTH_A),
+
+    /* Additional regs used by IGB */
+    defreg(FWSM), defreg(SW_FW_SYNC), defreg(HTCBDPC),
+    defreg(EICR),   defreg(EICS),     defreg(EIMS),    defreg(EIAM),
+    defreg(EIMC),
+    idefreg(IVAR),
 };
 
 static inline void

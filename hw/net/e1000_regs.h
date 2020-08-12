@@ -179,6 +179,16 @@
 #define E1000_FLSWCNT  0x01038  /* FLASH Access Counter */
 #define E1000_FLOP     0x0103C  /* FLASH Opcode Register */
 #define E1000_FLOL     0x01050  /* FEEP Auto Load */
+
+/* IGB specific section: */
+#define E1000_EICS     0x01520  /* Ext. Interrupt Cause Set - W0 */
+#define E1000_EIMS     0x01524  /* Ext. Interrupt Mask Set/Read - RW */
+#define E1000_EIMC     0x01528  /* Ext. Interrupt Mask Clear - WO */
+#define E1000_EIAM     0x01530  /* Ext. Interrupt Ack Auto Clear Mask - RW */
+#define E1000_EICR     0x01580  /* Ext. Interrupt Cause Read - R/clr */
+#define IGB_IVAR       0x01700  /* Interrupt Vector Allocation Register (1st) - RW */
+#define IGB_IVAR_MISC  0x01740  /* Interrupt Vector Allocation Register (last) - RW */
+
 #define E1000_ERT      0x02008  /* Early Rx Threshold - RW */
 #define E1000_FCRTL    0x02160  /* Flow Control Receive Threshold Low - RW */
 #define E1000_FCRTL_A  0x00168  /* Alias to FCRTL */
@@ -314,7 +324,10 @@
 #define E1000_ICTXQEC  0x04118  /* Interrupt Cause Tx Queue Empty Count */
 #define E1000_ICTXQMTC 0x0411C  /* Interrupt Cause Tx Queue Minimum Threshold Count */
 #define E1000_ICRXDMTC 0x04120  /* Interrupt Cause Rx Descriptor Minimum Threshold Count */
-#define E1000_ICRXOC   0x04124  /* Interrupt Cause Receiver Overrun Count */
+
+// #define E1000_ICRXOC   0x04124  /* Interrupt Cause Receiver Overrun Count */
+#define E1000_HTCBDPC  0x04124  /* Host TX Circuit Breaker Dropped Count */
+
 #define E1000_RXCSUM   0x05000  /* RX Checksum Control - RW */
 #define E1000_RFCTL    0x05008  /* Receive Filter Control*/
 #define E1000_MAVTV0   0x05010  /* Management VLAN TAG Value 0 */
@@ -416,11 +429,14 @@
 #define E1000_ICR_ASSERTED BIT(31)
 #define E1000_EIAC_MASK    0x01F00000
 
+/* Igb specific: */
+#define E1000_EICR_MASK 0x01FFFFFF /* EICR used bits in MSIX mode */
+
 /* [TR]DBAL and [TR]DLEN masks */
 #define E1000_XDBAL_MASK            (~(BIT(4) - 1))
 #define E1000_XDLEN_MASK            ((BIT(20) - 1) & (~(BIT(7) - 1)))
 
-/* IVAR register parsing helpers */
+/* IVAR register parsing helpers, E1000E */
 #define E1000_IVAR_INT_ALLOC_VALID  (0x8)
 
 #define E1000_IVAR_RXQ0_SHIFT       (0)
@@ -519,6 +535,9 @@
 
 /* 82574-specific registers - page 6 */
 #define PHY_CRC_COUNTERS      0x11 /* CRC Counters */
+
+/* 82576-specific registers */
+#define PHY_PAGE_SELECT        0x1F /* Page Select */
 
 #define PHY_PAGE_RW_MASK 0x7F /* R/W part of page address register */
 

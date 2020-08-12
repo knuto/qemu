@@ -2200,6 +2200,9 @@ e1000e_set_interrupt_cause(E1000ECore *core, uint32_t val)
     e1000e_update_interrupt_state(core);
 }
 
+/* Temporary solution to make the changes clearer: */
+#include "igb_intr.c"
+
 static inline void
 e1000e_autoneg_timer(void *opaque)
 {
@@ -2244,6 +2247,7 @@ static const char e1000e_phy_regcap[E1000E_PHY_PAGES][0x20] = {
         [PHY_OEM_BITS]          = PHY_RW,
         [PHY_BIAS_1]            = PHY_RW,
         [PHY_BIAS_2]            = PHY_RW,
+        [PHY_PAGE_SELECT]       = PHY_RW,
         [PHY_COPPER_INT_ENABLE] = PHY_RW,
         [PHY_COPPER_STAT2]      = PHY_R,
         [PHY_COPPER_CTRL2]      = PHY_RW
@@ -3045,6 +3049,7 @@ static const readops e1000e_macreg_readops[] = {
     [SWSM]    = e1000e_mac_swsm_read,
     [IMS]     = e1000e_mac_ims_read,
 
+    /* TBD: These are E1000E specific: */
     [CRCERRS ... MPC]      = e1000e_mac_readreg,
     [IP6AT ... IP6AT + 3]  = e1000e_mac_readreg,
     [IP4AT ... IP4AT + 6]  = e1000e_mac_readreg,
@@ -3061,7 +3066,18 @@ static const readops e1000e_macreg_readops[] = {
     [RETA ... RETA + 31]   = e1000e_mac_readreg,
     [RSSRK ... RSSRK + 31] = e1000e_mac_readreg,
     [MAVTV0 ... MAVTV3]    = e1000e_mac_readreg,
-    [EITR...EITR + E1000E_MSIX_VEC_NUM - 1] = e1000e_mac_eitr_read
+    [EITR...EITR + E1000E_MSIX_VEC_NUM - 1] = e1000e_mac_eitr_read,
+
+    /* IGB specific - should go in a disjoint struct
+     * but put here now just to make diffs easier:
+     */
+    [FWSM]       = e1000e_mac_readreg,
+    [SW_FW_SYNC] = e1000e_mac_readreg,
+    [HTCBDPC]    = e1000e_mac_read_clr4,
+    [EICR]       = e1000e_mac_read_clr4,
+    [EIMS]       = e1000e_mac_readreg,
+    [EIAM]       = e1000e_mac_readreg,
+    [I_IVAR ... I_IVAR + 32] = e1000e_mac_readreg,
 };
 enum { E1000E_NREADOPS = ARRAY_SIZE(e1000e_macreg_readops) };
 
@@ -3215,7 +3231,20 @@ static const writeops e1000e_macreg_writeops[] = {
     [RETA ... RETA + 31]     = e1000e_mac_writereg,
     [RSSRK ... RSSRK + 31]   = e1000e_mac_writereg,
     [MAVTV0 ... MAVTV3]      = e1000e_mac_writereg,
-    [EITR...EITR + E1000E_MSIX_VEC_NUM - 1] = e1000e_set_eitr
+    [EITR...EITR + E1000E_MSIX_VEC_NUM - 1] = e1000e_set_eitr,
+
+    /* IGB specific - should go in a disjoint struct
+     * but put here now just to make changes comprehensible:
+     */
+    [FWSM]     = e1000e_mac_writereg,
+    [SW_FW_SYNC] = e1000e_mac_writereg,
+    [EICR] = igb_set_eicr,
+    [EICS] = igb_set_eics,
+    [EIAC] = igb_set_eiac,
+    [EIAM] = igb_set_eiam,
+    [EIMC] = igb_set_eimc,
+    [EIMS] = igb_set_eims,
+    [I_IVAR ... I_IVAR + 32] = e1000e_mac_writereg,
 };
 enum { E1000E_NWRITEOPS = ARRAY_SIZE(e1000e_macreg_writeops) };
 
